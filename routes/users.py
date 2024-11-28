@@ -141,6 +141,10 @@ def edit_user(event):
                 "comment": "INVALID_FIELD: " + key
             }
     
+    # If the password is being updated, hash it
+    if 'password' in new_data:
+        new_data['password'] = hashlib.md5(new_data['password'].encode('utf-8')).hexdigest()
+    
     # Update the user data
     combined_data = {**old_data, **new_data}
     s3.put_object(
