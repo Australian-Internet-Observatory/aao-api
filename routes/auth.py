@@ -2,7 +2,7 @@ from routes import route
 from middlewares.authenticate import authenticate
 from utils import Response, use, jwt
 
-@route('auth/login')
+@route('auth/login', 'POST')
 def login(event, response: Response):
     """Log the user in and return a session token.
     
@@ -58,7 +58,7 @@ def login(event, response: Response):
         'token': token
     }
 
-@route('auth/verify')
+@route('auth/verify', 'POST')
 def verify(event, response: Response):
     """Verify the session token.
     
@@ -107,7 +107,7 @@ def verify(event, response: Response):
         'comment': 'VERIFY_FAILED'
     })
 
-@route('auth/logout')
+@route('auth/logout', 'POST')
 def logout(event, response: Response):
     """Log the user out.
     

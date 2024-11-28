@@ -1,10 +1,13 @@
 from functools import wraps
 from utils import use
 import inspect
+import typing
 
 routes = {}
 
-def route(action):
+HttpMethod = typing.Literal['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
+
+def route(action: str, method: HttpMethod ='GET'):
     def decorator(func):
         @wraps(func) # Preserve the function metadata (name, docstring, etc.)
         @use(lambda event, response, context: (event, response, context))
@@ -31,11 +34,15 @@ def route(action):
                     })
             # return func(event, response, context)
             return event, response, context
-        routes[action] = inner
+        # routes[action] = inner
+        if action not in routes:
+            routes[action] = {}
+        # Ensure the method is uppercase
+        routes[action][method.upper()] = inner
         return inner
     return decorator
 
-# Declare all routes here
+# Declare all routes here - won't work without the imports
 from . import auth
 from . import users
 from . import ad_attributes

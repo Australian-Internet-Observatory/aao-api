@@ -9,9 +9,10 @@ import json
 from routes import routes
 import s3
 
-@route('list-observers')
+@route('list-observers', 'GET')
 @use(authenticate)
-def list_observers():
+# Event not used directly, but needed to authenticate
+def list_observers(event):
     """List all observers.
 
     Retrieve a list of all observers from the S3 bucket.
@@ -40,9 +41,10 @@ def list_observers():
                             comment:
                                 type: string
     """
-    return s3.list_dir()
+    dirs = s3.list_dir()
+    return [path for path in dirs if path.endswith("/")]
 
-@route('get-access-cache') # get-access-cache?observer_id=5ea80108-154d-4a7f-8189-096c0641cd87
+@route('get-access-cache', 'POST') # get-access-cache?observer_id=5ea80108-154d-4a7f-8189-096c0641cd87
 @use(authenticate)
 def get_access_cache(event, response):
     """Retrieve the access cache for an observer.
@@ -99,7 +101,7 @@ def get_access_cache(event, response):
         'data': observer_data
     }
     
-@route('get-frames-presigned') # get-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
+@route('get-frames-presigned', 'POST') # get-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
 @use(authenticate)
 def get_frames_presigned(event, response):
     """Get the presigned URLs for the frames of an ad.
@@ -251,7 +253,7 @@ def try_compute_ads_stream_index():
     )
     return ads_stream_index
 
-@route('list-ads')
+@route('list-ads', 'GET')
 @use(authenticate)
 def get_ads_stream_index(event, response):
     """Retrieve the ads stream index.
@@ -308,7 +310,7 @@ def get_ads_stream_index(event, response):
             'error': str(e)
         })
 
-@route('reflect')
+@route('reflect', 'POST')
 def reflect(event):
     """Reflect the event back to the client.
     
@@ -346,12 +348,15 @@ def lambda_handler(event_raw, context):
         event, response, context = parse_body(event_raw, context, None)
         
         route = event['path']
+        method = event['httpMethod']
         if route.startswith('/'):
             route = route[1:]
         
         if route in routes:
-            _, response, _ = routes[route](event, response, context)
-            return response.body
+            if method in routes[route]:
+                action = routes[route][method]
+                _, response, _ = routes[route][method](event, response, context)
+                return response.body
 
         return {
             'statusCode': 404,
@@ -362,7 +367,7 @@ def lambda_handler(event_raw, context):
             'body': json.dumps({
                 'success': False,
                 'comment': 'ACTION_NOT_FOUND',
-                'error': f'No route found for "{route}"'
+                'error': f'No route found for "{route}" with method "{method}"'
             })
         }
     except Exception as e:
@@ -393,12 +398,12 @@ if __name__ == "__main__":
     #         'observer': '5ea80108-154d-4a7f-8189-096c0641cd87'
     #     }
     # }
-    data = {
-        'path': 'list-ads',
-    }
     event = {
-        'path': 'list-ads',
-        'body': base64.b64encode(json.dumps(data).encode('utf-8')).decode('utf-8')
+        'path': 'users',
+        'httpMethod': 'GET',
+        'headers': {
+            'Authorization': "Bearer eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJ1c2VybmFtZSI6ICJkYW50cmFuIiwgImZ1bGxfbmFtZSI6ICJEYW4gVHJhbiIsICJleHAiOiAxNzMyODU0MDEwLjIyMTk1NjN9.138f6b953c576512724f34af5c8fce443a2a5afc43570b6bedab355d81180677"
+        }
     }
     context = {}
     print(json.dumps(lambda_handler(event, context), indent=2))

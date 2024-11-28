@@ -21,7 +21,7 @@ ADS_BUCKET = 'fta-mobile-observations-v2'
 USERS_FOLDER_PREFIX = 'metadata/dashboard-users'
 AD_ATTRIBUTES_PREFIX = 'metadata/ad-custom-attributes'
 
-@route('ads/attributes')
+@route('ads/attributes', 'POST')
 @use(authenticate)
 def get_properties(event):
     """Retrieve ad attributes from the S3 bucket.
@@ -92,7 +92,7 @@ def get_properties(event):
             ad_attributes.append([])
     return ad_attributes
     
-@route('ads/attributes/add')
+@route('ads/attributes/add', 'POST')
 @use(authenticate)
 def add_properties(event):
     """Add or update ad attributes in the S3 bucket.

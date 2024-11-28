@@ -15,9 +15,10 @@ session = boto3.Session(
     region_name='ap-southeast-2'
 )
 
-@route('users')
+@route('users', 'GET')
 @use(authenticate)
-def list_users():
+# Event is not directly used here, but is needed for authenticate to work
+def list_users(event): 
     """Returns a list of users from the S3 bucket
 
     Returns a list of users stored in the S3 bucket.
@@ -62,7 +63,7 @@ def list_users():
         users.append(user_data)
     return users
 
-@route('users/edit')
+@route('users/edit', 'POST')
 @use(authenticate)
 def edit_user(event):
     """Edit a user in the S3 bucket
@@ -149,6 +150,3 @@ def edit_user(event):
         "success": True,
         "comment": "User updated successfully"
     }
-
-if __name__ == "__main__":
-    print(list_users())

@@ -15,6 +15,7 @@ info:
     email: d.k.tran@uq.edu.au
   license:
     name: MIT
+    url: https://opensource.org/license/mit
   version: 1.0.0
 externalDocs:
   description: Find out more about the Australian Ad Observatory
@@ -49,26 +50,28 @@ def generate_routes_docs():
     for path in paths:
         formatted_path = path if path.startswith("/") else f"/{path}"
         docs += indent(f"{formatted_path}:", 1)
-        docs += indent("post:", 2)
-        
-        raw_doc = routes[path].__doc__
-        if raw_doc is None:
-            continue
-        parts = raw_doc.split("---")
-        if len(parts) != 2:
-            continue
-        head, body = parts
-        head = head.strip().split("\n")
-        summary = head[0]
-        description = "|-\n" + indent("\n".join(head[1:]).strip(), 4, newline=False)
-        
-        swagger_doc = indent("summary: " + summary, 3)
-        swagger_doc += indent(format_docstring("description: " + description), 3)
-        
-        body = format_docstring(body)
-        swagger_doc += indent(body.strip(), 3)
-        
-        docs += swagger_doc
+        methods = routes[path].keys()
+        for method in methods:
+            docs += indent(f'{method.lower()}:', 2)
+            
+            raw_doc = routes[path][method].__doc__
+            if raw_doc is None:
+                continue
+            parts = raw_doc.split("---")
+            if len(parts) != 2:
+                continue
+            head, body = parts
+            head = head.strip().split("\n")
+            summary = head[0]
+            description = "|-\n" + indent("\n".join(head[1:]).strip(), 4, newline=False)
+            
+            swagger_doc = indent("summary: " + summary, 3)
+            swagger_doc += indent(format_docstring("description: " + description), 3)
+            
+            body = format_docstring(body)
+            swagger_doc += indent(body.strip(), 3)
+            
+            docs += swagger_doc
     return docs
 
 def main():
