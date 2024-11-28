@@ -4,9 +4,9 @@ from utils import Response, use, jwt
 
 @route('auth/login', 'POST')
 def login(event, response: Response):
-    """Log the user in and return a session token.
+    """Log the user in and return a JSON web token.
     
-    Log the user in and create a session token for the user, which can be used to authenticate the user in future requests.
+    Log the user in and create a JSON web token for the user, which can be used to authenticate the user in future requests.
     ---
     tags:
         - auth
@@ -60,9 +60,9 @@ def login(event, response: Response):
 
 @route('auth/verify', 'POST')
 def verify(event, response: Response):
-    """Verify the session token.
+    """Verify the JSON web token.
     
-    Return whether the session token is valid.
+    Return whether the JSON web token is valid.
     ---
     tags:
         - auth
@@ -111,7 +111,7 @@ def verify(event, response: Response):
 def logout(event, response: Response):
     """Log the user out.
     
-    Log the user out and disable the session token to prevent further authentication using the same token.
+    Log the user out and disable the JSON web token to prevent further authentication using the same token.
     ---
     tags:
         - auth

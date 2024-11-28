@@ -91,7 +91,7 @@ def create_session_token(username: str, password: str) -> str:
     hashed_password = hashlib.md5(password.encode('utf-8')).hexdigest()
     if user_data is None or user_data['password'] != hashed_password:
         raise Exception("INVALID_CREDENTIALS")
-    # Disable the most recent session token for the user (delete the session object)
+    # Disable the most recent JSON web token for the user (delete the session object)
     # to prevent multiple logins
     most_recent_session_path = get_most_recent_session_path(username)
     if most_recent_session_path is not None:

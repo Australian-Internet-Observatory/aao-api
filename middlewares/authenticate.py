@@ -15,7 +15,7 @@ def validate_session_token(arg_session_token):
     return jwt.verify_token(arg_session_token)
 
 def authenticate(event, response, context):
-    """Middleware to authenticate the user using a session token.
+    """Middleware to authenticate the user using a JSON web token.
     ---
     security:
         - bearerAuth: []
