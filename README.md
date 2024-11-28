@@ -24,17 +24,7 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-Additionally, you will need to create a `config.ini` file in the root directory of the project to store the AWS credentials and other settings. The `config.ini` file should look like this:
-
-```ini
-[AWS]
-ACCESS_KEY_ID = YOUR_ACCESS_KEY_ID
-SECRET_ACCESS_KEY = YOUR_SECRET_ACCESS_KEY
-
-[JWT]
-SECRET = YOUR_JWT_SECRET
-EXPIRATION = 86400
-```
+Additionally, you will need to create a `config.ini` file in the root directory of the project to store the AWS credentials and other settings. An example `sample_config.ini` is provided for reference.
 
 ## Generate the API documentation
 
