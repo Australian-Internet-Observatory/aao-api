@@ -22,16 +22,14 @@ def route(action: str, method: HttpMethod ='GET'):
                 event, response, context = results
             if not is_tuple:
                 data = results
-                if type(data) == dict:
+                if type(data) in [dict, str, list]:
                     response.json(data)
-                if type(data) == str:
-                    response.json({
-                        'message': data
-                    })
-                if type(data) == list:
-                    response.json({
-                        'data': data
-                    })
+                # if type(data) == dict:
+                #     response.json(data)
+                # if type(data) == str:
+                #     response.json(data)
+                # if type(data) == list:
+                #     response.json(data)
             # return func(event, response, context)
             return event, response, context
         # routes[action] = inner

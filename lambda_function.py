@@ -53,15 +53,12 @@ def get_access_cache(event, response):
     ---
     tags:
         - observers
-    requestBody:
-        required: true
-        content:
-            application/json:
-                schema:
-                    type: object
-                    properties:
-                        observer_id:
-                            type: string
+    parameters:
+        - in: query
+          name: observer_id
+          required: true
+          schema:
+              type: string
     responses:
         200:
             description: A successful response
@@ -110,15 +107,12 @@ def get_frames_presigned(event, response):
     ---
     tags:
         - ads
-    requestBody:
-        required: true
-        content:
-            application/json:
-                schema:
-                    type: object
-                    properties:
-                        path:
-                            type: string
+    parameters:
+        - in: query
+          name: path
+          required: true
+          schema:
+              type: string
     responses:
         200:
             description: A successful response
@@ -146,8 +140,10 @@ def get_frames_presigned(event, response):
                         properties:
                             success:
                                 type: boolean
+                                example: false
                             comment:
                                 type: string
+                                example: 'PATH_NOT_PROVIDED'
     """
     path = event['queryStringParameters'].get('path', None)
     if path is None:
