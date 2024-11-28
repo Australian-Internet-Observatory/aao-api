@@ -30,6 +30,14 @@ components:
       bearerFormat: JWT
 """
 
+default_body = """
+responses:
+    200:
+        description: OK
+    400:
+        description: Bad Request
+"""
+
 def indent(text, level=1, spaces=2, newline=True):
     # return " " * spaces * level + text + ("\n" if newline else "")
     lines = text.split("\n")
@@ -38,7 +46,7 @@ def indent(text, level=1, spaces=2, newline=True):
 
 def format_docstring(docstring):
     """Format the docstring to be YAML-compliant (consistent spacing, etc.)"""
-    yaml_doc = yaml.safe_load(docstring)
+    yaml_doc = yaml.load(docstring, Loader=yaml.FullLoader)
     return yaml.dump(yaml_doc, sort_keys=False)
 
 def generate_routes_docs():
@@ -54,24 +62,26 @@ def generate_routes_docs():
         for method in methods:
             docs += indent(f'{method.lower()}:', 2)
             
+            current_method_doc = ""
             raw_doc = routes[path][method].__doc__
             if raw_doc is None:
-                continue
+                raw_doc = ""
             parts = raw_doc.split("---")
-            if len(parts) != 2:
-                continue
-            head, body = parts
+            head = parts[0]
             head = head.strip().split("\n")
             summary = head[0]
-            description = "|-\n" + indent("\n".join(head[1:]).strip(), 4, newline=False)
+            if len(summary) > 0:
+                current_method_doc = indent("summary: " + summary, 3)
             
-            swagger_doc = indent("summary: " + summary, 3)
-            swagger_doc += indent(format_docstring("description: " + description), 3)
+            if len(head) > 1:
+                description = "|-\n" + indent("\n".join([line.strip() for line in head[1:]]).strip(), 1, newline=False)
+                current_method_doc += indent(format_docstring("description: " + description), 3)
             
+            body = parts[1] if len(parts) > 1 else default_body
             body = format_docstring(body)
-            swagger_doc += indent(body.strip(), 3)
+            current_method_doc += indent(body.strip(), 3)
             
-            docs += swagger_doc
+            docs += current_method_doc
     return docs
 
 def main():

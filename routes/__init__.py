@@ -33,10 +33,10 @@ def route(action: str, method: HttpMethod ='GET'):
             # return func(event, response, context)
             return event, response, context
         # routes[action] = inner
+        formatted_route = action if action.startswith("/") else f"/{action}"
         if action not in routes:
-            routes[action] = {}
-        # Ensure the method is uppercase
-        routes[action][method.upper()] = inner
+            routes[formatted_route] = {}
+        routes[formatted_route][method.upper()] = inner
         return inner
     return decorator
 

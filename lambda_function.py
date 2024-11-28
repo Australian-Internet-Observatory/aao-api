@@ -339,20 +339,23 @@ def reflect(event):
     """
     return event
 
+@route('/hello', 'GET')
+def hello():
+    return {'message': 'Hello, world!'}
+
 def lambda_handler(event_raw, context):
     try:
         event, response, context = parse_body(event_raw, context, None)
         
         route = event['path']
         method = event['httpMethod']
-        if route.startswith('/'):
-            route = route[1:]
+        if not route.startswith('/'):
+            route = f'/{route}'
         
-        if route in routes:
-            if method in routes[route]:
-                action = routes[route][method]
-                _, response, _ = routes[route][method](event, response, context)
-                return response.body
+        if route in routes and method in routes[route]:
+            action = routes[route][method]
+            _, response, _ = action(event, response, context)
+            return response.body
 
         return {
             'statusCode': 404,
@@ -394,12 +397,18 @@ if __name__ == "__main__":
     #         'observer': '5ea80108-154d-4a7f-8189-096c0641cd87'
     #     }
     # }
+    # event = {
+    #     'path': 'users',
+    #     'httpMethod': 'GET',
+    #     'headers': {
+    #         'Authorization': "Bearer eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJ1c2VybmFtZSI6ICJkYW50cmFuIiwgImZ1bGxfbmFtZSI6ICJEYW4gVHJhbiIsICJleHAiOiAxNzMyODU0MDEwLjIyMTk1NjN9.138f6b953c576512724f34af5c8fce443a2a5afc43570b6bedab355d81180677"
+    #     }
+    # }
+    print(routes)
+    
     event = {
-        'path': 'users',
-        'httpMethod': 'GET',
-        'headers': {
-            'Authorization': "Bearer eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJ1c2VybmFtZSI6ICJkYW50cmFuIiwgImZ1bGxfbmFtZSI6ICJEYW4gVHJhbiIsICJleHAiOiAxNzMyODU0MDEwLjIyMTk1NjN9.138f6b953c576512724f34af5c8fce443a2a5afc43570b6bedab355d81180677"
-        }
+        'path': 'hello',
+        'httpMethod': 'GET'
     }
     context = {}
     print(json.dumps(lambda_handler(event, context), indent=2))
