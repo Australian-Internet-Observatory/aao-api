@@ -1,0 +1,53 @@
+# Australian Ad Observatory API
+
+This is the codebase for the Australian Ad Observatory API, which is a Mono-Lambda serverless application that provides an API for the [Australian Ad Observatory dashboard](https://github.com/ADMSCentre/australian-ad-observatory-dashboard-v2).
+
+## Setup
+
+The purpose of this repository is to document the changes to the API, and to host the API documentation.
+
+For the code to run locally, you will need to set up a virtual environment and install the dependencies. You can do this by running the following commands:
+
+**For MacOS and Linux:**
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+**For Windows:**
+
+```bash
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Additionally, you will need to create a `config.ini` file in the root directory of the project to store the AWS credentials and other settings. The `config.ini` file should look like this:
+
+```ini
+[AWS]
+ACCESS_KEY_ID = YOUR_ACCESS_KEY_ID
+SECRET_ACCESS_KEY = YOUR_SECRET_ACCESS_KEY
+
+[JWT]
+SECRET = YOUR_JWT_SECRET
+EXPIRATION = 86400
+```
+
+## Generate the API documentation
+
+To generate the API documentation locally, you will need to run the following command:
+
+```bash
+python docgen.py
+```
+
+This will create a `swagger.yaml` OpenAPI Spec file in the root directory of the project, which describes the API and is compatible with Swagger UI.
+
+> [!NOTE]
+>
+> You can use the [Swagger Editor](https://editor.swagger.io/) to and test the generated `swagger.yaml` file.
+>
+> A [Swagger UI Action](https://github.com/marketplace/actions/swagger-ui-action) workflow is used to deploy the API documentation to GitHub Pages automatically when a push is made to the `main` branch.

@@ -1,0 +1,157 @@
+from routes import route
+from middlewares.authenticate import authenticate
+from utils import Response, use, jwt
+
+@route('auth/login')
+def login(event, response: Response):
+    """Log the user in and return a session token.
+    
+    Log the user in and create a session token for the user, which can be used to authenticate the user in future requests.
+    ---
+    tags:
+        - auth
+    requestBody:
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        username:
+                            type: string
+                        password:
+                            type: string
+    responses:
+        200:
+            description: A successful login
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            token:
+                                type: string
+        400:
+            description: A failed login
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            comment:
+                                type: string
+    """
+    username = event['body']['username']
+    password = event['body']['password']
+    token = jwt.create_session_token(username, password)
+    if token is None:
+        return response.status(400).json({
+            'success': False,
+            'comment': 'LOGIN_FAILED'
+        })
+    return {
+        'success': True,
+        'token': token
+    }
+
+@route('auth/verify')
+def verify(event, response: Response):
+    """Verify the session token.
+    
+    Return whether the session token is valid.
+    ---
+    tags:
+        - auth
+    requestBody:
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        token:
+                            type: string
+    responses:
+        200:
+            description: A successful verification
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+        400:
+            description: A failed verification
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            comment:
+                                type: string
+    """
+    token = event['body']['token']
+    if jwt.verify_token(token):
+        return {
+            'success': True
+        }
+    return response.status(400).json({
+        'success': False,
+        'comment': 'VERIFY_FAILED'
+    })
+
+@route('auth/logout')
+def logout(event, response: Response):
+    """Log the user out.
+    
+    Log the user out and disable the session token to prevent further authentication using the same token.
+    ---
+    tags:
+        - auth
+    requestBody:
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        token:
+                            type: string
+    responses:
+        200:
+            description: A successful logout
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+        400:
+            description: A failed logout
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            comment:
+                                type: string
+    """
+    token = event['body']['token']
+    if jwt.disable_session_token(token):
+        return {
+            'success': True
+        }
+    return response.status(400).json({
+        'success': False,
+        'comment': 'LOGOUT_FAILED'
+    })
