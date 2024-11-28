@@ -47,16 +47,16 @@ def login(event, response: Response):
     """
     username = event['body']['username']
     password = event['body']['password']
-    token = jwt.create_session_token(username, password)
-    if token is None:
+    try:
+        return {
+            'success': True,
+            'token': jwt.create_session_token(username, password)
+        }
+    except Exception as e:
         return response.status(400).json({
             'success': False,
-            'comment': 'LOGIN_FAILED'
+            'comment': str(e)
         })
-    return {
-        'success': True,
-        'token': token
-    }
 
 @route('auth/verify', 'POST')
 def verify(event, response: Response):

@@ -63,7 +63,7 @@ def list_users(event):
         users.append(user_data)
     return users
 
-@route('users/edit', 'POST')
+@route('users/edit', 'PATCH')
 @use(authenticate)
 def edit_user(event):
     """Edit a user in the S3 bucket
@@ -114,7 +114,8 @@ def edit_user(event):
                                 type: string
     """
     s3 = session.client('s3')
-    username = event['data']['username']
+    print(event)
+    username = event['body']['username']
     user_object = None
     try:
         user_object = s3.get_object(
@@ -127,7 +128,8 @@ def edit_user(event):
             "comment": "User not found"
         }
     old_data = json.loads(user_object['Body'].read().decode('utf-8'))
-    new_data = event['data']
+    new_data = event['body']
+    new_data.pop('username')
     
     acceptable_fields = ['enabled', 'password', 'full_name', 'role']
     

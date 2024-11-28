@@ -28,7 +28,6 @@ s3 = session.client('s3', region_name='ap-southeast-2')
 def get_user_data(username: str) -> dict:
     try:
         obj = s3.get_object(Bucket=TARGET_BUCKET, Key=f'{USERS_FOLDER_PREFIX}/{username}/credentials.json')
-        print(obj)
         data = obj['Body'].read().decode('utf-8')
         return json.loads(data)
     except Exception as e:
@@ -90,10 +89,8 @@ def verify_token(token: str) -> bool:
 def create_session_token(username: str, password: str) -> str:
     user_data = get_user_data(username)
     hashed_password = hashlib.md5(password.encode('utf-8')).hexdigest()
-    if user_data is None:
-        return None
-    if user_data['password'] != hashed_password:
-        return None
+    if user_data is None or user_data['password'] != hashed_password:
+        raise Exception("INVALID_CREDENTIALS")
     # Disable the most recent session token for the user (delete the session object)
     # to prevent multiple logins
     most_recent_session_path = get_most_recent_session_path(username)
@@ -113,7 +110,7 @@ def create_session_token(username: str, password: str) -> str:
     return token
 
 def disable_session_token(token: str) -> bool:
-    print("Disabling token", token, "...")
+    # print("Disabling token", token, "...")
     parts = token.split('.')
     if len(parts) != 3:
         return False

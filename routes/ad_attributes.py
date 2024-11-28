@@ -69,7 +69,7 @@ def get_properties(event):
                             comment:
                                 type: string
     """
-    ads = event['data']['ads']
+    ads = event['body']['ads']
     # Each ad should be an object with an 'ad_id' key
     s3 = session.client('s3')
     ad_attributes = []
@@ -148,11 +148,11 @@ def add_properties(event):
                             comment:
                                 type: string
     """
-    ad_data = event['data']['ad']
+    ad_data = event['body']['ad']
     observer_id = ad_data['observer']
     timestamp = ad_data['timestamp']
     ad_id = ad_data['ad_id']
-    attribute = event['data']['attribute']
+    attribute = event['body']['attribute']
     # Ensure the ad actually exists in the S3 bucket
     ad_path = f'{observer_id}/temp/{timestamp}.{ad_id}/'
     print('AD PATH:', ad_path)
