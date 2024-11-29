@@ -140,10 +140,11 @@ def get_frames_presigned(event, response):
     """
     # path = event['queryStringParameters'].get('path', None)
     # Compute the path from the path parameters: {observer_id}/temp/{timestamp}.{ad_id}
+    print(event['pathParameters'])
     observer_id = event['pathParameters'].get('observer_id', None)
     timestamp = event['pathParameters'].get('timestamp', None)
     ad_id = event['pathParameters'].get('ad_id', None)
-    path = f'{observer_id}/temp/{timestamp}.{ad_id}/'
+    path = f'{observer_id}/temp/{timestamp}.{ad_id}'
     
     if path is None:
         return response.status(400).json({
@@ -155,6 +156,8 @@ def get_frames_presigned(event, response):
         path += '/'
     # List the frames at the path
     frames = s3.list_dir(path)
+    print(path)
+    # print(s3.list_dir(f'{observer_id}/temp'))
     frame_paths = [f'{frame}' for frame in frames]
     
     # Generate presigned URLs for each frame

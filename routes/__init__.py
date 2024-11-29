@@ -2,6 +2,7 @@ from functools import wraps
 from utils import use
 import inspect
 import typing
+import re
 
 routes = {}
 
@@ -65,7 +66,8 @@ def get_path_param_keys(route: str) -> list[str]:
     Returns:
         list[str]: The keys of the path parameters in the route.
     """
-    return [part[1:-1] for part in route.split('/') if part.startswith('{') and part.endswith('}')]
+    # Use regex to find all fields between curly braces
+    return re.findall(r'{(.*?)}', route)
 
 def parse_path_parameters(path: str) -> tuple[str, dict]:
     """Find the route associated with a path pattern and extract the path parameters.
@@ -94,27 +96,27 @@ def parse_path_parameters(path: str) -> tuple[str, dict]:
     Returns:
         tuple[str, dict]: The route pattern and the extracted path parameters from the url.
     """
-    for route, methods in routes.items():
+    for candidate, methods in routes.items():
         # If an exact match is found -> the route is static and has no parameters
-        if route == path:
-            return route, {}
-        route_parts = route.split('/')
+        if candidate == path:
+            return candidate, {}
+        route_parts = candidate.split('/')
         path_parts = path.split('/')
         if len(route_parts) != len(path_parts):
             continue
         params = {}
-        path_param_keys = get_path_param_keys(route)
-        for route_part, path_part in zip(route_parts, path_parts):
-            if route_part == path_part:
-                continue
-            if route_part.startswith('{') and route_part.endswith('}'):
-                key = route_part[1:-1]
-                if key in path_param_keys:
-                    params[key] = path_part
-                continue
-            break
-        else:
-            return route, params
+        path_param_keys = get_path_param_keys(candidate)
+        
+        # Replace all {param} with (.*?) regex pattern to find the parameter values
+        escaped_route = re.escape(candidate)
+        escaped_route = re.sub(r'\\{.*?\\}', r'(.*?)', escaped_route)
+        parse_regex = f"^{escaped_route}$"
+        matches = re.match(parse_regex, path)
+        if matches is None:
+            continue
+        for i, key in enumerate(path_param_keys):
+            params[key] = matches.group(i + 1)
+        return candidate, params
     raise KeyError(f'No route found for path: {path}')
 
 # Declare all routes here - won't work without the imports

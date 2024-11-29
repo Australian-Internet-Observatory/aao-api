@@ -64,6 +64,8 @@ def lambda_handler(event_raw, context):
             path = path[:-1]
         
         route, path_params = parse_path_parameters(path)
+        print(f'Route: {route}')
+        print(f'Path params: {path_params}')
         if path_params is not None and len(path_params) > 0:
             event['pathParameters'] = path_params
         
