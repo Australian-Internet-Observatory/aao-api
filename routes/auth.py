@@ -42,6 +42,7 @@ def login(event, response: Response):
                         properties:
                             success:
                                 type: boolean
+                                example: False
                             comment:
                                 type: string
     """
@@ -94,8 +95,10 @@ def verify(event, response: Response):
                         properties:
                             success:
                                 type: boolean
+                                example: False
                             comment:
                                 type: string
+                                example: 'VERIFY_FAILED'
     """
     token = event['body']['token']
     if jwt.verify_token(token):
@@ -143,8 +146,10 @@ def logout(event, response: Response):
                         properties:
                             success:
                                 type: boolean
+                                example: False
                             comment:
                                 type: string
+                                example: 'LOGOUT_FAILED'
     """
     token = event['body']['token']
     if jwt.disable_session_token(token):

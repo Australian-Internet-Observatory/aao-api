@@ -1,4 +1,4 @@
-from routes import routes
+from routes import get_path_param_keys, parse_path_parameters, routes
 import yaml
 import lambda_function # To capture routes not in 'routes' folder
 
@@ -49,6 +49,13 @@ def format_docstring(docstring):
     yaml_doc = yaml.load(docstring, Loader=yaml.FullLoader)
     return yaml.dump(yaml_doc, sort_keys=False)
 
+def has_property(yaml_string, property_name):
+    yaml_obj = yaml.load(yaml_string, Loader=yaml.FullLoader)
+    return property_name in yaml_obj
+
+def has_path_parameters(path):
+    return "{" in path and "}" in path
+
 def generate_routes_docs():
     """
     Generate documentation for all routes by parsing the docstrings of each route and returning a Swagger-compliant YAML string.
@@ -79,9 +86,29 @@ def generate_routes_docs():
             
             body = parts[1] if len(parts) > 1 else default_body
             body = format_docstring(body)
+            
+            if has_path_parameters(path):
+                params_obj = {
+                    "parameters": []
+                }
+                params = get_path_param_keys(path)
+                for param in params:
+                    params_obj["parameters"].append({
+                        "name": param,
+                        "in": "path",
+                        "required": True,
+                        "schema": {
+                            "type": "string"
+                        }
+                    })
+                param_doc = yaml.dump(params_obj, sort_keys=False)
+                body = param_doc + body
+                body = format_docstring(body)
+            
             current_method_doc += indent(body.strip(), 3)
             
             docs += current_method_doc
+            print(path, method)
     return docs
 
 def main():

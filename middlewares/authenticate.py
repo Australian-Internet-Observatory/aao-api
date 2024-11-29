@@ -16,6 +16,11 @@ def validate_session_token(arg_session_token):
 
 def authenticate(event, response, context):
     """Middleware to authenticate the user using a JSON web token.
+    
+    This function passes the payload of the JSON web token to the applied function.
+    
+    Appends the following OpenAPI documentation to the applied function:
+    
     ---
     security:
         - bearerAuth: []

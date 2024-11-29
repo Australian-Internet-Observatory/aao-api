@@ -19,9 +19,9 @@ session = boto3.Session(
 @use(authenticate)
 # Event is not directly used here, but is needed for authenticate to work
 def list_users(event): 
-    """Returns a list of users from the S3 bucket
+    """Returns a list of users from the database
 
-    Returns a list of users stored in the S3 bucket.
+    Returns a list of users stored in the database.
     ---
     tags:
         - users
@@ -44,6 +44,7 @@ def list_users(event):
                         properties:
                             success:
                                 type: boolean
+                                example: False
                             comment:
                                 type: string
     """
@@ -63,15 +64,22 @@ def list_users(event):
         users.append(user_data)
     return users
 
-@route('users/edit', 'PATCH')
+@route('users/{username}', 'PATCH')
 @use(authenticate)
-def edit_user(event):
-    """Edit a user in the S3 bucket
+def edit_user(event, response):
+    """Edit a user's information
 
-    Edit a user's information stored in the S3 bucket.
+    Edit a user's information. All fields are optional, and only the fields provided will be updated.
     ---
     tags:
         - users
+    parameters:
+        - in: path
+          name: username
+          required: true
+          schema:
+              type: string
+          description: The username of the user to edit
     requestBody:
         required: true
         content:
@@ -79,8 +87,6 @@ def edit_user(event):
                 schema:
                     type: object
                     properties:
-                        username:
-                            type: string
                         enabled:
                             type: boolean
                         password:
@@ -110,12 +116,27 @@ def edit_user(event):
                         properties:
                             success:
                                 type: boolean
+                                example: False
                             comment:
                                 type: string
+                                example: 'User not found'
+        403:
+            description: Unauthorized edit
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'UNAUTHORIZED'
     """
     s3 = session.client('s3')
     print(event)
-    username = event['body']['username']
+    username = event['pathParameters']['username']
     user_object = None
     try:
         user_object = s3.get_object(
@@ -123,23 +144,30 @@ def edit_user(event):
             Key=f'metadata/dashboard-users/{username}/credentials.json'
         )
     except Exception as e:
-        return {
+        return response.status(400).json({
             "success": False,
             "comment": "User not found"
-        }
+        })
     old_data = json.loads(user_object['Body'].read().decode('utf-8'))
     new_data = event['body']
-    new_data.pop('username')
+    new_data.pop('username', None)
     
     acceptable_fields = ['enabled', 'password', 'full_name', 'role']
     
     # Ensure that the fields are acceptable
     for key in new_data:
         if key not in acceptable_fields:
-            return {
+            return response.status(400).json({
                 "success": False,
-                "comment": "INVALID_FIELD: " + key
-            }
+                "comment": f"Field '{key}' is not acceptable"
+            })
+    
+    # Ensure the role is only updated by an admin
+    if 'role' in new_data and event['user']['role'] != 'admin':
+        return response.status(403).json({
+            "success": False,
+            "comment": "UNAUTHORIZED"
+        })
     
     # If the password is being updated, hash it
     if 'password' in new_data:
@@ -156,3 +184,56 @@ def edit_user(event):
         "success": True,
         "comment": "User updated successfully"
     }
+    
+@route('users/{username}', 'GET')
+@use(authenticate)
+def get_user(event, response):
+    """Get a user from the database
+
+    Get a user's information stored in the database.
+    ---
+    tags:
+        - users
+    parameters:
+        - in: path
+          name: username
+          required: true
+          schema:
+              type: string
+          description: The username of the user to get
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'User not found'
+    """
+    s3 = session.client('s3')
+    username = event['pathParameters']['username']
+    user_object = None
+    try:
+        user_object = s3.get_object(
+            Bucket='fta-mobile-observations-holding-bucket',
+            Key=f'metadata/dashboard-users/{username}/credentials.json'
+        )
+    except Exception as e:
+        return response.status(400).json({
+            "success": False,
+            "comment": "User not found"
+        })
+    user_data = json.loads(user_object['Body'].read().decode('utf-8'))
+    return user_data
