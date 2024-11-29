@@ -107,10 +107,12 @@ def get_attributes(event, response):
             "attributes": ad_attributes_data
         }
     except Exception as e:
-        return response.status(400).json({
-            "success": False,
-            "comment": "ERROR_RETRIEVING_ATTRIBUTES"
-        })
+        return {
+            "ad_id": ad_id,
+            "observer": observer_id,
+            "timestamp": timestamp,
+            "attributes": {}
+        }
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/attributes', 'PUT')
 @use(authenticate)
