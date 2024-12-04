@@ -36,6 +36,17 @@ def list_users(event):
                         type: array
                         items:
                             type: object
+                            properties:
+                                username:
+                                    type: string
+                                enabled:
+                                    type: boolean
+                                password:
+                                    type: string
+                                full_name:
+                                    type: string
+                                role:
+                                    type: string
         400:
             description: A failed response
             content:
@@ -326,6 +337,17 @@ def get_current_user(event, response):
                 application/json:
                     schema:
                         type: object
+                        properties:
+                            username:
+                                type: string
+                            enabled:
+                                type: boolean
+                            password:
+                                type: string
+                            full_name:
+                                type: string
+                            role:
+                                type: string
         400:
             description: A failed response
             content:
@@ -379,6 +401,17 @@ def get_user(event, response):
                 application/json:
                     schema:
                         type: object
+                        properties:
+                            username:
+                                type: string
+                            enabled:
+                                type: boolean
+                            password:
+                                type: string
+                            full_name:
+                                type: string
+                            role:
+                                type: string
         400:
             description: A failed response
             content:
