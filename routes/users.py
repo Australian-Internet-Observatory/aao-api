@@ -309,6 +309,53 @@ def edit_user(event, response):
         "comment": "User updated successfully"
     }
     
+
+@route('users/self', 'GET')
+@use(authenticate)
+def get_current_user(event, response):
+    """Get the current user's information
+
+    Get the information of the user making the request.
+    ---
+    tags:
+        - users
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'User not found'
+    """
+    caller = event['user']
+    s3 = session.client('s3')
+    user_object = None
+    try:
+        user_object = s3.get_object(
+            Bucket='fta-mobile-observations-holding-bucket',
+            Key=f'metadata/dashboard-users/{caller["username"]}/credentials.json'
+        )
+    except Exception as e:
+        return response.status(400).json({
+            "success": False,
+            "comment": "User not found"
+        })
+    user_data = json.loads(user_object['Body'].read().decode('utf-8'))
+    return user_data
+    
 @route('users/{username}', 'GET')
 @use(authenticate)
 def get_user(event, response):
@@ -375,52 +422,6 @@ def get_user(event, response):
         user_object = s3.get_object(
             Bucket='fta-mobile-observations-holding-bucket',
             Key=f'metadata/dashboard-users/{username}/credentials.json'
-        )
-    except Exception as e:
-        return response.status(400).json({
-            "success": False,
-            "comment": "User not found"
-        })
-    user_data = json.loads(user_object['Body'].read().decode('utf-8'))
-    return user_data
-
-@route('users/self', 'GET')
-@use(authenticate)
-def get_current_user(event, response):
-    """Get the current user's information
-
-    Get the information of the user making the request.
-    ---
-    tags:
-        - users
-    responses:
-        200:
-            description: A successful response
-            content:
-                application/json:
-                    schema:
-                        type: object
-        400:
-            description: A failed response
-            content:
-                application/json:
-                    schema:
-                        type: object
-                        properties:
-                            success:
-                                type: boolean
-                                example: False
-                            comment:
-                                type: string
-                                example: 'User not found'
-    """
-    caller = event['user']
-    s3 = session.client('s3')
-    user_object = None
-    try:
-        user_object = s3.get_object(
-            Bucket='fta-mobile-observations-holding-bucket',
-            Key=f'metadata/dashboard-users/{caller["username"]}/credentials.json'
         )
     except Exception as e:
         return response.status(400).json({

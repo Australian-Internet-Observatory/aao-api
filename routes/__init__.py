@@ -96,10 +96,13 @@ def parse_path_parameters(path: str) -> tuple[str, dict]:
     Returns:
         tuple[str, dict]: The route pattern and the extracted path parameters from the url.
     """
-    for candidate, methods in routes.items():
+    for candidate, _ in routes.items():
         # If an exact match is found -> the route is static and has no parameters
         if candidate == path:
             return candidate, {}
+    
+    # Otherwise, check for a dynamic route
+    for candidate, methods in routes.items():
         route_parts = candidate.split('/')
         path_parts = path.split('/')
         if len(route_parts) != len(path_parts):
