@@ -162,8 +162,8 @@ def create_user(event, response):
             "success": False,
             "comment": "User already exists"
         })
-    except:
-        pass
+    except Exception as e:
+        print(e)
     
     # Hash the password
     new_user['password'] = hashlib.md5(new_user['password'].encode('utf-8')).hexdigest()

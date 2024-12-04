@@ -61,10 +61,12 @@ def create_token(user_data: User) -> tuple[str, dict]:
         "typ": "JWT"
     }
     header_base64 = base64.b64encode(json.dumps(header).encode('utf-8')).decode('utf-8')
+    # Copy all fields (except the password) from the user data to the payload
+    copied_data = dict(user_data)
+    copied_data.pop('password')
     payload = {
-        "username": user_data['username'],
-        "full_name": user_data['full_name'],
-        "exp": expiration_time
+        "exp": expiration_time,
+        **copied_data
     }
     payload_base64 = base64.b64encode(json.dumps(payload).encode('utf-8')).decode('utf-8')
     secret = config['JWT']['SECRET']
