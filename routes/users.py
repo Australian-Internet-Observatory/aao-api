@@ -20,7 +20,7 @@ session = boto3.Session(
 @use(authorise('admin'))
 # Event is not directly used here, but is needed for authenticate to work
 def list_users(event): 
-    """Returns a list of users from the database
+    """Returns a list of users from the database (admin only)
 
     Returns a list of users stored in the database.
     ---
@@ -48,6 +48,19 @@ def list_users(event):
                                 example: False
                             comment:
                                 type: string
+        403:
+            description: Unauthorized access
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'UNAUTHORISED'
     """
     s3 = session.client('s3')
     user_objects = s3.list_objects_v2(
@@ -122,6 +135,19 @@ def create_user(event, response):
                             comment:
                                 type: string
                                 example: 'User already exists'
+        403:
+            description: Unauthorized access
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'UNAUTHORISED'
     """
     s3 = session.client('s3')
     new_user = event['body']
@@ -157,7 +183,7 @@ def create_user(event, response):
 @route('users/{username}', 'PATCH')
 @use(authenticate)
 def edit_user(event, response):
-    """Edit a user's information
+    """Edit a user's information (self or admin only)
 
     Edit a user's information. All fields are optional, and only the fields provided will be updated.
     ---
@@ -222,7 +248,7 @@ def edit_user(event, response):
                                 example: False
                             comment:
                                 type: string
-                                example: 'UNAUTHORIZED'
+                                example: 'UNAUTHORISED'
     """
     caller = event['user']
     # Only editable by self, or admin
@@ -286,7 +312,7 @@ def edit_user(event, response):
 @route('users/{username}', 'GET')
 @use(authenticate)
 def get_user(event, response):
-    """Get a user from the database
+    """Get a user from the database (self or admin only)
 
     Get a user's information stored in the database.
     ---
@@ -319,7 +345,29 @@ def get_user(event, response):
                             comment:
                                 type: string
                                 example: 'User not found'
+        403:
+            description: Unauthorized access
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'UNAUTHORISED'
     """
+    
+    # Only admin or self can view
+    caller = event['user']
+    if caller['username'] != event['pathParameters']['username'] and caller['role'] != 'admin':
+        return response.status(403).json({
+            "success": False,
+            "comment": "UNAUTHORIZED"
+        })
+    
     s3 = session.client('s3')
     username = event['pathParameters']['username']
     user_object = None
