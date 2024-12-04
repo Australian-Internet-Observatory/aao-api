@@ -1,5 +1,5 @@
 from routes import route
-from middlewares.authenticate import authenticate
+from middlewares.authenticate import authenticate, authorise
 from utils import use, jwt
 import hashlib
 import boto3
@@ -17,6 +17,7 @@ session = boto3.Session(
 
 @route('users', 'GET')
 @use(authenticate)
+@use(authorise('admin'))
 # Event is not directly used here, but is needed for authenticate to work
 def list_users(event): 
     """Returns a list of users from the database
@@ -63,6 +64,95 @@ def list_users(event):
         user_data = json.loads(user_object['Body'].read().decode('utf-8'))
         users.append(user_data)
     return users
+
+@route('users', 'POST')
+@use(authenticate)
+@use(authorise('admin'))
+def create_user(event, response):
+    """Create a new user (admin only)
+
+    Create a new user in the database.
+    ---
+    tags:
+        - users
+    requestBody:
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        username:
+                            type: string
+                            required: true
+                        enabled:
+                            type: boolean
+                            required: true
+                        password:
+                            type: string
+                            required: true
+                        full_name:
+                            type: string
+                            required: true
+                        role:
+                            type: string
+                            required: true
+    responses:
+        201:
+            description: User created successfully
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            comment:
+                                type: string
+        400:
+            description: User creation failed
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'User already exists'
+    """
+    s3 = session.client('s3')
+    new_user = event['body']
+    
+    # Check if user already exists
+    try:
+        s3.head_object(
+            Bucket='fta-mobile-observations-holding-bucket',
+            Key=f'metadata/dashboard-users/{new_user["username"]}/credentials.json'
+        )
+        return response.status(400).json({
+            "success": False,
+            "comment": "User already exists"
+        })
+    except:
+        pass
+    
+    # Hash the password
+    new_user['password'] = hashlib.md5(new_user['password'].encode('utf-8')).hexdigest()
+    
+    # Save the new user
+    s3.put_object(
+        Bucket='fta-mobile-observations-holding-bucket',
+        Key=f'metadata/dashboard-users/{new_user["username"]}/credentials.json',
+        Body=json.dumps(new_user).encode('utf-8')
+    )
+    
+    return response.status(201).json({
+        "success": True,
+        "comment": "User created successfully"
+    })
 
 @route('users/{username}', 'PATCH')
 @use(authenticate)
@@ -134,6 +224,14 @@ def edit_user(event, response):
                                 type: string
                                 example: 'UNAUTHORIZED'
     """
+    caller = event['user']
+    # Only editable by self, or admin
+    if caller['username'] != event['pathParameters']['username'] and caller['role'] != 'admin':
+        return response.status(403).json({
+            "success": False,
+            "comment": "UNAUTHORIZED"
+        })
+    
     s3 = session.client('s3')
     print(event)
     username = event['pathParameters']['username']
@@ -163,7 +261,7 @@ def edit_user(event, response):
             })
     
     # Ensure the role is only updated by an admin
-    if 'role' in new_data and event['user']['role'] != 'admin':
+    if 'role' in new_data and caller['role'] != 'admin':
         return response.status(403).json({
             "success": False,
             "comment": "UNAUTHORIZED"
