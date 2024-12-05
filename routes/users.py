@@ -1,3 +1,4 @@
+import datetime
 from routes import route
 from middlewares.authenticate import authenticate, authorise
 from utils import use, jwt
@@ -463,3 +464,90 @@ def get_user(event, response):
         })
     user_data = json.loads(user_object['Body'].read().decode('utf-8'))
     return user_data
+
+@route('users/{username}', 'DELETE')
+@use(authenticate)
+@use(authorise('admin'))
+def delete_user(event, response):
+    """Delete a user (admin only)
+
+    Delete a user by moving their data to the recycle bin.
+    ---
+    tags:
+        - users
+    parameters:
+        - in: path
+          name: username
+          required: true
+          schema:
+              type: string
+          description: The username of the user to delete
+    responses:
+        200:
+            description: User deleted successfully
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            comment:
+                                type: string
+        400:
+            description: User deletion failed
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'User not found'
+        403:
+            description: Unauthorized access
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'UNAUTHORISED'
+    """
+    s3 = session.client('s3')
+    username = event['pathParameters']['username']
+    try:
+        # Copy user data to recycle bin
+        copy_source = {
+            'Bucket': 'fta-mobile-observations-holding-bucket',
+            'Key': f'metadata/dashboard-users/{username}/credentials.json'
+        }
+        # Get the timestamp of the deletion (for potential recovery later)
+        now = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        s3.copy_object(
+            CopySource=copy_source,
+            Bucket='fta-mobile-observations-holding-bucket',
+            Key=f'metadata/recycle-bin/dashboard-users/{now}_{username}/credentials.json'
+        )
+        # Delete user data from original location
+        s3.delete_object(
+            Bucket='fta-mobile-observations-holding-bucket',
+            Key=f'metadata/dashboard-users/{username}/credentials.json'
+        )
+    except Exception as e:
+        return response.status(400).json({
+            "success": False,
+            "comment": "User not found"
+        })
+    
+    return response.status(200).json({
+        "success": True,
+        "comment": "User deleted successfully"
+    })
