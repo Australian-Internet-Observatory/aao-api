@@ -81,9 +81,9 @@ def get_access_cache(event, response):
         'data': observer_data
     }
 
-@route('ads/{observer_id}/{timestamp}.{ad_id}/stiching/frames', 'GET') # get-stiching-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
+@route('ads/{observer_id}/{timestamp}.{ad_id}/stitching/frames', 'GET') # get-stiching-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
 @use(authenticate)
-def get_stiching_frames_presigned(event, response):
+def get_stitching_frames_presigned(event, response):
     """Get the presigned URLs for the frames of an ad's stitching.
     
     Retrieve presigned URLs for the frames of the specified ad's stitching, which is the cropped version of the ad that removes the irrelevant parts.
