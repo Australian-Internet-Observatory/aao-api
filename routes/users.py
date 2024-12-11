@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 from routes import route
 from middlewares.authenticate import authenticate, authorise
 from utils import use, jwt
@@ -320,7 +320,6 @@ def edit_user(event, response):
         "success": True,
         "comment": "User updated successfully"
     }
-    
 
 @route('users/self', 'GET')
 @use(authenticate)
@@ -542,6 +541,7 @@ def delete_user(event, response):
             Key=f'metadata/dashboard-users/{username}/credentials.json'
         )
     except Exception as e:
+        print(e)
         return response.status(400).json({
             "success": False,
             "comment": "User not found"

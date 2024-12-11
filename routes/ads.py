@@ -81,6 +81,52 @@ def get_access_cache(event, response):
         'data': observer_data
     }
 
+@route('ads/{observer_id}/{timestamp}.{ad_id}/stiching/frames', 'GET') # get-stiching-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
+@use(authenticate)
+def get_stiching_frames_presigned(event, response):
+    """Get the presigned URLs for the frames of an ad's stitching.
+    
+    Retrieve presigned URLs for the frames of the specified ad's stitching, which is the cropped version of the ad that removes the irrelevant parts.
+    """
+    observer_id = event['pathParameters'].get('observer_id', None)
+    timestamp = event['pathParameters'].get('timestamp', None)
+    ad_id = event['pathParameters'].get('ad_id', None)
+    path = f'{observer_id}/stitching/{timestamp}.{ad_id}'
+    
+    if path is None:
+        return response.status(400).json({
+            'success': False,
+            'comment': 'PATH_NOT_PROVIDED'
+        })
+    
+    if not path.endswith('/'):
+        path += '/'
+    # List the frames at the path
+    frames = s3.list_dir(path)
+    # print(s3.list_dir(f'{observer_id}/temp'))
+    frame_paths = [f'{frame}' for frame in frames]
+    
+    # Generate presigned URLs for each frame
+    presigned_urls = []
+    image_extensions = ['.jpg', '.jpeg', '.png']
+    for frame_path in frame_paths:
+        if not any([frame_path.endswith(ext) for ext in image_extensions]):
+            continue
+        presigned_url = s3.client.generate_presigned_url(
+            ClientMethod='get_object',
+            Params={
+                'Bucket': s3.MOBILE_OBSERVATIONS_BUCKET,
+                'Key': frame_path
+            }
+        )
+        presigned_urls.append(presigned_url)
+    
+    return {
+        'success': True,
+        'frame_paths': frame_paths,
+        'presigned_urls': presigned_urls
+    }
+
 @route('ads/{observer_id}/{timestamp}.{ad_id}/frames', 'GET') # get-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
 @use(authenticate)
 def get_frames_presigned(event, response):

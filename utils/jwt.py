@@ -185,6 +185,26 @@ def disable_session_token(token: str) -> bool:
     except Exception as e:
         return False
 
+def disable_sessions_for_user(username: str) -> bool:
+    """
+    Disable all session tokens for the given username by deleting all session objects in S3.
+
+    Args:
+        username (str): The username of the user.
+
+    Returns:
+        bool: True if all sessions were successfully disabled, False otherwise.
+    """
+    sessions = s3.list_objects_v2(Bucket=TARGET_BUCKET, Prefix=f'{USERS_FOLDER_PREFIX}/{username}/sessions/')
+    if 'Contents' not in sessions:
+        return True
+    for session in sessions['Contents']:
+        try:
+            s3.delete_object(Bucket=TARGET_BUCKET, Key=session['Key'])
+        except Exception as e:
+            return False
+    return True
+
 def get_most_recent_session_path(username: str) -> dict:
     """
     Retrieve the path of the most recent session for the given username.
