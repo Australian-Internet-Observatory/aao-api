@@ -87,6 +87,56 @@ def get_stitching_frames_presigned(event, response):
     """Get the presigned URLs for the frames of an ad's stitching.
     
     Retrieve presigned URLs for the frames of the specified ad's stitching, which is the cropped version of the ad that removes the irrelevant parts.
+    ---
+    tags:
+        - ads
+    parameters:
+        - in: path
+          name: observer_id
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: timestamp
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: ad_id
+          required: true
+          schema:
+              type: string
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            frame_paths:
+                                type: array
+                                items:
+                                    type: string
+                            presigned_urls:
+                                type: array
+                                items:
+                                    type: string
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'PATH_NOT_PROVIDED'
     """
     observer_id = event['pathParameters'].get('observer_id', None)
     timestamp = event['pathParameters'].get('timestamp', None)
