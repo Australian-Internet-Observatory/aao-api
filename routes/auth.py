@@ -160,3 +160,58 @@ def logout(event, response: Response):
         'success': False,
         'comment': 'LOGOUT_FAILED'
     })
+    
+@route('auth/refresh', 'POST')
+def refresh(event, response: Response):
+    """Refresh the JSON web token.
+    
+    Refresh the JSON web token to extend the session.
+    ---
+    tags:
+        - auth
+    requestBody:
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        token:
+                            type: string
+    responses:
+        200:
+            description: A successful refresh
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            token:
+                                type: string
+        400:
+            description: A failed refresh
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'REFRESH_FAILED'
+    """
+    token = event['body']['token']
+    try:
+        return {
+            'success': True,
+            'token': jwt.refresh_session_token(token)
+        }
+    except Exception as e:
+        return response.status(400).json({
+            'success': False,
+            'comment': str(e)
+        })

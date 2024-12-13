@@ -127,7 +127,7 @@ def verify_token(token: str) -> bool:
 
 def create_session_token(username: str, password: str) -> str:
     """
-    Create a session token for the user with the given username and password.
+    Create a session token for the user with the given username and password. This also disables the most recent session token for the user.
 
     Args:
         username (str): The username of the user.
@@ -160,6 +160,29 @@ def create_session_token(username: str, password: str) -> str:
         Body=json.dumps(payload).encode('utf-8')
     )
     return token
+
+def refresh_session_token(token: str) -> str:
+    """Refresh a session token by extending its expiration time.
+
+    Args:
+        token (str): The session token to refresh.
+
+    Returns:
+        str: The new token with the updated expiration time.
+    """
+    parts = token.split('.')
+    if len(parts) != 3:
+        return None
+    header_base64, payload_base64, signature = parts
+    payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
+    # Find the user data from the payload
+    username = payload['username']
+    user_data = get_user_data(username)
+    if user_data is None:
+        return None
+    # Log the user in again to create a new session token
+    new_token, new_payload = create_session_token(username, user_data['password'])
+    return new_token
 
 def disable_session_token(token: str) -> bool:
     """
