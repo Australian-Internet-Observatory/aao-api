@@ -180,9 +180,16 @@ def refresh_session_token(token: str) -> str:
     user_data = get_user_data(username)
     if user_data is None:
         return None
-    # Log the user in again to create a new session token
-    new_token, new_payload = create_session_token(username, user_data['password'])
-    return new_token
+    token, payload = create_token(user_data)
+    # Save the token to the user's session (for verification later)
+    exp = payload['exp']
+    session_object_path = f'{USERS_FOLDER_PREFIX}/{username}/sessions/{exp}_{token}.json'
+    s3.put_object(
+        Bucket=TARGET_BUCKET,
+        Key=session_object_path,
+        Body=json.dumps(payload).encode('utf-8')
+    )
+    return token
 
 def disable_session_token(token: str) -> bool:
     """
