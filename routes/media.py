@@ -31,6 +31,9 @@ def get_media(event, response: Response):
                     schema:
                         type: object
                         properties:
+                            success:
+                                type: boolean
+                                example: True
                             path:
                                 type: string
                             url:
