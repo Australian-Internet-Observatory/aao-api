@@ -64,8 +64,9 @@ def get_media(event, response: Response):
         
         # Return the URL
         return response.json({
+            'success': True,
             'path': path,
-            'url': url
+            'presigned_url': url
         })
     except Exception as e:
         return response.status(404).json({
