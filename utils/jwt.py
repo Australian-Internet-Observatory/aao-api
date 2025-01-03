@@ -2,7 +2,6 @@ import json
 import time
 import hashlib
 import base64
-from routes.guest import SESSION_FOLDER_PREFIX
 import utils.metadata_repository as metadata
 from configparser import ConfigParser
 
@@ -16,6 +15,7 @@ config = ConfigParser()
 config.read('config.ini')
 
 USERS_FOLDER_PREFIX = 'dashboard-users'
+SESSION_FOLDER_PREFIX = 'guest-sessions'
 
 def get_user_data(username: str) -> dict:
     """
