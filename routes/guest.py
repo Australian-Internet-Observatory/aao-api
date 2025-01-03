@@ -1,5 +1,7 @@
 from routes import route
 import utils.metadata_repository as metadata
+from middlewares.authorise import authorise, Role
+from middlewares.authenticate import authenticate
 from utils.jwt import create_token
 import time
 import json
@@ -7,6 +9,8 @@ import json
 SESSION_FOLDER_PREFIX = 'guest-sessions'
 
 @route('/guest/sessions', 'POST')
+@authenticate
+@authorise(Role.ADMIN, Role.USER)
 def create_session(event, response, context):
     """Create a guest session.
     ---
@@ -90,6 +94,8 @@ def create_session(event, response, context):
 
 
 @route('/guest/sessions', 'GET')
+@authenticate
+@authorise(Role.ADMIN, Role.USER)
 def list_sessions(event, response, context):
     """List all guest sessions.
     ---
@@ -183,6 +189,8 @@ def get_session(event, response, context):
     return event, response, context
 
 @route('/guest/sessions/{key}', 'DELETE')
+@authenticate
+@authorise(Role.ADMIN, Role.USER)
 def delete_session(event, response, context):
     """Delete a guest session.
     ---
@@ -242,6 +250,8 @@ def delete_session(event, response, context):
     return event, response, context
 
 @route('/guest/sessions/{key}', 'PATCH')
+@authenticate
+@authorise(Role.ADMIN, Role.USER)
 def update_session(event, response, context):
     """Update a guest session.
     ---
