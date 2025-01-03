@@ -67,7 +67,6 @@ def inject_docs(func, middleware):
     # Extract the injected documentation from the middleware.
     inject_doc = parse_injected_doc(middleware.__doc__)
     middleware_name = middleware.__name__
-    print(f'Injecting documentation from {middleware_name} into {func.__name__}...', inject_doc)
     # Inject the documentation into the function, based on the specified location.
     if 'summary' in inject_doc:
         # Summary is appended to the first line of the function's documentation.

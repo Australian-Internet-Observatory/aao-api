@@ -38,10 +38,13 @@ def delete_object(key):
     )
     return s3.delete_object(Bucket=BUCKET, Key=copy_source)
 
-def list_objects(key=''):
+def list_objects(key='', include_prefix=False):
     prefix = f"{PREFIX}/{key}" if key else PREFIX
     response = s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix)
-    return [item['Key'] for item in response.get('Contents', [])]
+    raw_keys = [item['Key'] for item in response.get('Contents', [])]
+    if include_prefix:
+        return raw_keys
+    return [key.split(f"{PREFIX}/")[1] for key in raw_keys]
 
 def head_object(key):
     response = s3.head_object(Bucket=BUCKET, Key=f"{PREFIX}/{key}")

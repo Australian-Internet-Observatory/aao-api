@@ -2,7 +2,21 @@
   "editor.tabSize": 4,
   "github.copilot.chat.commitMessageGeneration.instructions": [
     {
-      "text": "Use conventional commit message format."
+      "text": "Use conventional commit message format. Include a concise body if necessary."
+    }
+  ],
+  "github.copilot.chat.codeGeneration.instructions": [
+    {
+      "file": "docs/framework.md"
+    },
+    {
+      "text": "Always add OpenAPI documentation to routes."
+    },
+    {
+      "file": "docs/local-testing.md"
+    },
+    {
+      "text": "Always add tests to tests.py."
     }
   ]
 }

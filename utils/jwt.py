@@ -33,19 +33,23 @@ def get_user_data(username: str) -> dict:
         print(e)
         return None
 
-def create_token(user_data: User) -> tuple[str, dict]:
+def create_token(user_data: User, expire: int = None) -> tuple[str, dict]:
     """
     Create a JSON Web Token (JWT) for the given user data, and return the token and its payload.
 
     Args:
         user_data (User): The user data object.
+        expire (int, optional): The expiration time of the token in seconds. Defaults to None (use the default expiration time from the config).
 
     Returns:
         str: The generated JWT.
         dict: The payload of the JWT.
     """
     current_time = time.time()
-    expiration_time = current_time + config.getint('JWT', 'EXPIRATION')
+    if expire is None:
+        expiration_time = current_time + config.getint('JWT', 'EXPIRATION')
+    else:
+        expiration_time = current_time + expire
     header = {
         "alg": "HS256",
         "typ": "JWT"
@@ -53,7 +57,8 @@ def create_token(user_data: User) -> tuple[str, dict]:
     header_base64 = base64.b64encode(json.dumps(header).encode('utf-8')).decode('utf-8')
     # Copy all fields (except the password) from the user data to the payload
     copied_data = dict(user_data)
-    copied_data.pop('password')
+    if 'password' in copied_data:
+        copied_data.pop('password')
     payload = {
         "exp": expiration_time,
         **copied_data
