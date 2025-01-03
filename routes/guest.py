@@ -9,12 +9,14 @@ import json
 
 SESSION_FOLDER_PREFIX = 'guest-sessions'
 
-@route('/guest/sessions', 'POST')
+@route('/guests', 'POST')
 @use(authenticate)
 @use(authorise(Role.ADMIN, Role.USER))
 def create_session(event, response, context):
     """Create a guest session.
     ---
+    tags:
+      - guests
     requestBody:
       required: true
       content:
@@ -94,12 +96,14 @@ def create_session(event, response, context):
     return event, response, context
 
 
-@route('/guest/sessions', 'GET')
+@route('/guests', 'GET')
 @use(authenticate)
 @use(authorise(Role.ADMIN, Role.USER))
 def list_sessions(event, response, context):
     """List all guest sessions.
     ---
+    tags:
+      - guests
     responses:
       200:
         description: A JSON array containing session data
@@ -129,12 +133,12 @@ def list_sessions(event, response, context):
     response.json(sessions)
     return event, response, context
 
-@route('/guest/sessions/{key}', 'GET')
-@use(authenticate)
-@use(authorise(Role.ADMIN, Role.USER))
+@route('/guests/{key}', 'GET')
 def get_session(event, response, context):
     """Retrieve a guest session.
     ---
+    tags:
+      - guests
     parameters:
       - name: key
         in: path
@@ -191,12 +195,14 @@ def get_session(event, response, context):
     })
     return event, response, context
 
-@route('/guest/sessions/{key}', 'DELETE')
+@route('/guests/{key}', 'DELETE')
 @use(authenticate)
 @use(authorise(Role.ADMIN, Role.USER))
 def delete_session(event, response, context):
     """Delete a guest session.
     ---
+    tags:
+      - guests
     parameters:
       - name: key
         in: path
@@ -252,12 +258,14 @@ def delete_session(event, response, context):
     })
     return event, response, context
 
-@route('/guest/sessions/{key}', 'PATCH')
+@route('/guests/{key}', 'PATCH')
 @use(authenticate)
 @use(authorise(Role.ADMIN, Role.USER))
 def update_session(event, response, context):
     """Update a guest session.
     ---
+    tags:
+      - guests
     parameters:
       - name: key
         in: path
