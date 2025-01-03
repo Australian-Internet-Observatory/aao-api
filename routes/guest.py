@@ -88,7 +88,7 @@ def create_session(event, response, context):
     session_file_key = f"{SESSION_FOLDER_PREFIX}/{key}.json"
     metadata.put_object(session_file_key, json.dumps(session_data))
 
-    token = create_token(session_data)
+    token, payload = create_token(session_data)
     response.json({
         "success": True,
         "token": token
@@ -188,7 +188,7 @@ def get_session(event, response, context):
         })
         return event, response, context
 
-    token = create_token(session_data)
+    token, payload = create_token(session_data)
     response.json({
         "success": True,
         "token": token

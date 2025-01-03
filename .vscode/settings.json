@@ -2,6 +2,9 @@
   "editor.tabSize": 4,
   "github.copilot.chat.commitMessageGeneration.instructions": [
     {
+      "text": "Use Australian English spelling."
+    },
+    {
       "text": "Use conventional commit message format. Include a concise body if necessary."
     }
   ],

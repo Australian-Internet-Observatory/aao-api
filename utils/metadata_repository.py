@@ -30,7 +30,7 @@ def delete_object(key):
     now = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     copy_source = f"{PREFIX}/{key}"
     key_without_extension, extension = key.rsplit('.', 1)
-    recycle_bin_key = f"recycle-bin/{PREFIX}/{key_without_extension}_{now}.{extension}"
+    recycle_bin_key = f"{PREFIX}/recycle-bin/{key_without_extension}_{now}.{extension}"
     s3.copy_object(
         CopySource={'Bucket': BUCKET, 'Key': copy_source},
         Bucket=BUCKET,
@@ -48,4 +48,4 @@ def list_objects(key='', include_prefix=False):
 
 def head_object(key):
     response = s3.head_object(Bucket=BUCKET, Key=f"{PREFIX}/{key}")
-    return response['Metadata']
+    return response
