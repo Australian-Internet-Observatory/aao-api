@@ -2,6 +2,7 @@ import json
 import time
 import hashlib
 import base64
+from routes.guest import SESSION_FOLDER_PREFIX
 import utils.metadata_repository as metadata
 from configparser import ConfigParser
 
@@ -107,7 +108,12 @@ def verify_token(token: str) -> bool:
         return False
     payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
     exp = payload['exp']
-    session_object_path = f'{USERS_FOLDER_PREFIX}/{payload["username"]}/sessions/{exp}_{token}.json'
+    # Look up the session object in S3, depending if it is a user or guest session
+    if 'role' in payload and payload['role'] == 'guest':
+        session_object_path = f'{SESSION_FOLDER_PREFIX}/{payload["username"]}.json'
+    else:
+        session_object_path = f'{USERS_FOLDER_PREFIX}/{payload["username"]}/sessions/{exp}_{token}.json'
+    
     try:
         metadata.get_object(session_object_path)
     except Exception as e:
