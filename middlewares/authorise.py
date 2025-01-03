@@ -5,7 +5,7 @@ class Role(Enum):
     ADMIN = "admin"     # Administrator. Can access all resources.
     USER = "user"       # Authenticated user.
 
-def authorise(roles: list[Role]):
+def authorise(*roles: list[Role]):
     def wrapper(event, response, context):
         print("Attempting to authorise", roles, "for", event)
         if 'user' not in event:
