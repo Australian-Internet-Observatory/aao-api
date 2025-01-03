@@ -1,0 +1,1 @@
+# Endpoints for creating guest accounts. Used to allow unauthenticated users to access certain resources.

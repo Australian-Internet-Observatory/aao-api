@@ -6,7 +6,7 @@ class Role(Enum):
     USER = "user"       # Authenticated user.
 
 def authorise(*roles: list[Role]):
-    def wrapper(event, response, context):
+    def allows(event, response, context):
         print("Attempting to authorise", roles, "for", event)
         if 'user' not in event:
             response.status(401).json({
@@ -22,4 +22,11 @@ def authorise(*roles: list[Role]):
             })
             return event, response, context
         return event, response, context
-    return wrapper
+    # Inject the documentation into the middleware function.
+    allows.__doc__ = f"""
+    --- summary
+    {', '.join([role.value for role in roles])}
+    --- description
+    This endpoint requires the authenticated user to have one of the following roles: **{', '.join([role.value for role in roles])}**.
+    """
+    return allows

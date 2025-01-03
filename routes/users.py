@@ -101,23 +101,24 @@ def create_user(event, response):
         content:
             application/json:
                 schema:
+                    required:
+                        - username
+                        - enabled
+                        - password
+                        - full_name
+                        - role
                     type: object
                     properties:
                         username:
                             type: string
-                            required: true
                         enabled:
                             type: boolean
-                            required: true
                         password:
                             type: string
-                            required: true
                         full_name:
                             type: string
-                            required: true
                         role:
                             type: string
-                            required: true
     responses:
         201:
             description: User created successfully
