@@ -54,22 +54,3 @@ def authenticate(event, response, context):
         return event, response, context
     event['user'] = jwt.decode_token(session_token)
     return event, response, context
-
-def authorise(roles: list[str]):
-    def wrapper(event, response, context):
-        print("Attempting to authorise", roles, "for", event)
-        if 'user' not in event:
-            response.status(401).json({
-                "success": False,
-                "comment": "MUST_USE_AFTER_AUTHENTICATE",
-            })
-            return event, response, context
-        user = event['user']
-        if user['role'] not in roles:
-            response.status(403).json({
-                "success": False,
-                "comment": "UNAUTHORISED",
-            })
-            return event, response, context
-        return event, response, context
-    return wrapper

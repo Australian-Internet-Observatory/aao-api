@@ -1,10 +1,12 @@
 from datetime import datetime
 from routes import route
-from middlewares.authenticate import authenticate, authorise
+from middlewares.authorise import Role, authorise
+from middlewares.authenticate import authenticate
 from utils import use, jwt
 import hashlib
 import boto3
 import json
+import utils.metadata_repository as metadata
 
 from configparser import ConfigParser
 config = ConfigParser()
@@ -16,9 +18,11 @@ session = boto3.Session(
     region_name='ap-southeast-2'
 )
 
+USERS_FOLDER_PREFIX = 'dashboard-users'
+
 @route('users', 'GET')
 @use(authenticate)
-@use(authorise('admin'))
+@use(authorise(Role.ADMIN))
 # Event is not directly used here, but is needed for authenticate to work
 def list_users(event): 
     """Returns a list of users from the database (admin only)
@@ -74,25 +78,17 @@ def list_users(event):
                                 type: string
                                 example: 'UNAUTHORISED'
     """
-    s3 = session.client('s3')
-    user_objects = s3.list_objects_v2(
-        Bucket='fta-mobile-observations-holding-bucket',
-        Prefix='metadata/dashboard-users/'
-    )
-    keys = [user['Key'] for user in user_objects['Contents'] if user['Key'].endswith('credentials.json')]
+    user_keys = metadata.list_objects(f'{USERS_FOLDER_PREFIX}/')
+    keys = [key for key in user_keys if key.endswith('credentials.json')]
     users = []
     for key in keys:
-        user_object = s3.get_object(
-            Bucket='fta-mobile-observations-holding-bucket',
-            Key=key
-        )
-        user_data = json.loads(user_object['Body'].read().decode('utf-8'))
+        user_data = json.loads(metadata.get_object(key).decode('utf-8'))
         users.append(user_data)
     return users
 
 @route('users', 'POST')
 @use(authenticate)
-@use(authorise('admin'))
+@use(authorise(Role.ADMIN))
 def create_user(event, response):
     """Create a new user (admin only)
 
@@ -161,15 +157,12 @@ def create_user(event, response):
                                 type: string
                                 example: 'UNAUTHORISED'
     """
-    s3 = session.client('s3')
     new_user = event['body']
+    user_path = f'{USERS_FOLDER_PREFIX}/{new_user["username"]}/credentials.json'
     
     # Check if user already exists
     try:
-        s3.head_object(
-            Bucket='fta-mobile-observations-holding-bucket',
-            Key=f'metadata/dashboard-users/{new_user["username"]}/credentials.json'
-        )
+        metadata.head_object(user_path)
         return response.status(400).json({
             "success": False,
             "comment": "User already exists"
@@ -181,11 +174,7 @@ def create_user(event, response):
     new_user['password'] = hashlib.md5(new_user['password'].encode('utf-8')).hexdigest()
     
     # Save the new user
-    s3.put_object(
-        Bucket='fta-mobile-observations-holding-bucket',
-        Key=f'metadata/dashboard-users/{new_user["username"]}/credentials.json',
-        Body=json.dumps(new_user).encode('utf-8')
-    )
+    metadata.put_object(user_path, json.dumps(new_user).encode('utf-8'))
     
     return response.status(201).json({
         "success": True,
@@ -194,6 +183,7 @@ def create_user(event, response):
 
 @route('users/{username}', 'PATCH')
 @use(authenticate)
+@use(authorise(Role.USER, Role.ADMIN))
 def edit_user(event, response):
     """Edit a user's information (self or admin only)
 
@@ -264,27 +254,22 @@ def edit_user(event, response):
     """
     caller = event['user']
     # Only editable by self, or admin
-    if caller['username'] != event['pathParameters']['username'] and caller['role'] != 'admin':
+    if caller['username'] != event['pathParameters']['username'] and caller['role'] != Role.ADMIN:
         return response.status(403).json({
             "success": False,
             "comment": "UNAUTHORIZED"
         })
     
-    s3 = session.client('s3')
-    print(event)
     username = event['pathParameters']['username']
-    user_object = None
+    user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
     try:
-        user_object = s3.get_object(
-            Bucket='fta-mobile-observations-holding-bucket',
-            Key=f'metadata/dashboard-users/{username}/credentials.json'
-        )
+        old_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
     except Exception as e:
         return response.status(400).json({
             "success": False,
             "comment": "User not found"
         })
-    old_data = json.loads(user_object['Body'].read().decode('utf-8'))
+    
     new_data = event['body']
     new_data.pop('username', None)
     
@@ -299,7 +284,7 @@ def edit_user(event, response):
             })
     
     # Ensure the role is only updated by an admin
-    if 'role' in new_data and caller['role'] != 'admin':
+    if 'role' in new_data and caller['role'] != Role.ADMIN:
         return response.status(403).json({
             "success": False,
             "comment": "UNAUTHORIZED"
@@ -311,11 +296,7 @@ def edit_user(event, response):
     
     # Update the user data
     combined_data = {**old_data, **new_data}
-    s3.put_object(
-        Bucket='fta-mobile-observations-holding-bucket',
-        Key=f'metadata/dashboard-users/{username}/credentials.json',
-        Body=json.dumps(combined_data).encode('utf-8')
-    )
+    metadata.put_object(user_path, json.dumps(combined_data).encode('utf-8'))
     return {
         "success": True,
         "comment": "User updated successfully"
@@ -323,6 +304,7 @@ def edit_user(event, response):
 
 @route('users/self', 'GET')
 @use(authenticate)
+@use(authorise(Role.USER, Role.ADMIN))
 def get_current_user(event, response):
     """Get the current user's information
 
@@ -363,23 +345,19 @@ def get_current_user(event, response):
                                 example: 'User not found'
     """
     caller = event['user']
-    s3 = session.client('s3')
-    user_object = None
+    user_path = f'{USERS_FOLDER_PREFIX}/{caller["username"]}/credentials.json'
     try:
-        user_object = s3.get_object(
-            Bucket='fta-mobile-observations-holding-bucket',
-            Key=f'metadata/dashboard-users/{caller["username"]}/credentials.json'
-        )
+        user_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
+        return user_data
     except Exception as e:
         return response.status(400).json({
             "success": False,
             "comment": "User not found"
         })
-    user_data = json.loads(user_object['Body'].read().decode('utf-8'))
-    return user_data
     
 @route('users/{username}', 'GET')
 @use(authenticate)
+@use(authorise(Role.USER, Role.ADMIN))
 def get_user(event, response):
     """Get a user from the database (self or admin only)
 
@@ -442,31 +420,26 @@ def get_user(event, response):
     
     # Only admin or self can view
     caller = event['user']
-    if caller['username'] != event['pathParameters']['username'] and caller['role'] != 'admin':
+    if caller['username'] != event['pathParameters']['username'] and caller['role'] != Role.ADMIN:
         return response.status(403).json({
             "success": False,
             "comment": "UNAUTHORIZED"
         })
     
-    s3 = session.client('s3')
     username = event['pathParameters']['username']
-    user_object = None
+    user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
     try:
-        user_object = s3.get_object(
-            Bucket='fta-mobile-observations-holding-bucket',
-            Key=f'metadata/dashboard-users/{username}/credentials.json'
-        )
+        user_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
+        return user_data
     except Exception as e:
         return response.status(400).json({
             "success": False,
             "comment": "User not found"
         })
-    user_data = json.loads(user_object['Body'].read().decode('utf-8'))
-    return user_data
 
 @route('users/{username}', 'DELETE')
 @use(authenticate)
-@use(authorise('admin'))
+@use(authorise(Role.ADMIN))
 def delete_user(event, response):
     """Delete a user (admin only)
 
@@ -520,26 +493,10 @@ def delete_user(event, response):
                                 type: string
                                 example: 'UNAUTHORISED'
     """
-    s3 = session.client('s3')
     username = event['pathParameters']['username']
+    user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
     try:
-        # Copy user data to recycle bin
-        copy_source = {
-            'Bucket': 'fta-mobile-observations-holding-bucket',
-            'Key': f'metadata/dashboard-users/{username}/credentials.json'
-        }
-        # Get the timestamp of the deletion (for potential recovery later)
-        now = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-        s3.copy_object(
-            CopySource=copy_source,
-            Bucket='fta-mobile-observations-holding-bucket',
-            Key=f'metadata/recycle-bin/dashboard-users/{now}_{username}/credentials.json'
-        )
-        # Delete user data from original location
-        s3.delete_object(
-            Bucket='fta-mobile-observations-holding-bucket',
-            Key=f'metadata/dashboard-users/{username}/credentials.json'
-        )
+        metadata.delete_object(user_path)
     except Exception as e:
         print(e)
         return response.status(400).json({

@@ -1,9 +1,8 @@
-import boto3
 import json
 import time
 import hashlib
 import base64
-
+import utils.metadata_repository as metadata
 from configparser import ConfigParser
 
 class User:
@@ -11,19 +10,11 @@ class User:
     password: str
     username: str
     full_name: str
-    
+
 config = ConfigParser()
 config.read('config.ini')
 
-TARGET_BUCKET = 'fta-mobile-observations-holding-bucket'
-USERS_FOLDER_PREFIX = 'metadata/dashboard-users'
-
-session = boto3.Session(
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY']
-)
-
-s3 = session.client('s3', region_name='ap-southeast-2')
+USERS_FOLDER_PREFIX = 'dashboard-users'
 
 def get_user_data(username: str) -> dict:
     """
@@ -36,8 +27,7 @@ def get_user_data(username: str) -> dict:
         dict: The user data as a dictionary, or None if an error occurs.
     """
     try:
-        obj = s3.get_object(Bucket=TARGET_BUCKET, Key=f'{USERS_FOLDER_PREFIX}/{username}/credentials.json')
-        data = obj['Body'].read().decode('utf-8')
+        data = metadata.get_object(f'{USERS_FOLDER_PREFIX}/{username}/credentials.json').decode('utf-8')
         return json.loads(data)
     except Exception as e:
         print(e)
@@ -114,9 +104,7 @@ def verify_token(token: str) -> bool:
     exp = payload['exp']
     session_object_path = f'{USERS_FOLDER_PREFIX}/{payload["username"]}/sessions/{exp}_{token}.json'
     try:
-        obj = s3.get_object(Bucket=TARGET_BUCKET, Key=session_object_path)
-        if obj is None:
-            return False
+        metadata.get_object(session_object_path)
     except Exception as e:
         return False
     # Ensure the token has not expired
@@ -154,11 +142,7 @@ def create_session_token(username: str, password: str) -> str:
     # Save the token to the user's session (for verification later)
     exp = payload['exp']
     session_object_path = f'{USERS_FOLDER_PREFIX}/{username}/sessions/{exp}_{token}.json'
-    s3.put_object(
-        Bucket=TARGET_BUCKET,
-        Key=session_object_path,
-        Body=json.dumps(payload).encode('utf-8')
-    )
+    metadata.put_object(session_object_path, json.dumps(payload).encode('utf-8'))
     return token
 
 def refresh_session_token(token: str) -> str:
@@ -184,11 +168,7 @@ def refresh_session_token(token: str) -> str:
     # Save the token to the user's session (for verification later)
     exp = payload['exp']
     session_object_path = f'{USERS_FOLDER_PREFIX}/{username}/sessions/{exp}_{token}.json'
-    s3.put_object(
-        Bucket=TARGET_BUCKET,
-        Key=session_object_path,
-        Body=json.dumps(payload).encode('utf-8')
-    )
+    metadata.put_object(session_object_path, json.dumps(payload).encode('utf-8'))
     return token
 
 def disable_session_token(token: str) -> bool:
@@ -210,7 +190,7 @@ def disable_session_token(token: str) -> bool:
     exp = payload['exp']
     session_object_path = f'{USERS_FOLDER_PREFIX}/{payload["username"]}/sessions/{exp}_{token}.json'
     try:
-        s3.delete_object(Bucket=TARGET_BUCKET, Key=session_object_path)
+        metadata.delete_object(session_object_path)
         return True
     except Exception as e:
         return False
@@ -225,12 +205,10 @@ def disable_sessions_for_user(username: str) -> bool:
     Returns:
         bool: True if all sessions were successfully disabled, False otherwise.
     """
-    sessions = s3.list_objects_v2(Bucket=TARGET_BUCKET, Prefix=f'{USERS_FOLDER_PREFIX}/{username}/sessions/')
-    if 'Contents' not in sessions:
-        return True
-    for session in sessions['Contents']:
+    sessions = metadata.list_objects(f'{USERS_FOLDER_PREFIX}/{username}/sessions/')
+    for session in sessions:
         try:
-            s3.delete_object(Bucket=TARGET_BUCKET, Key=session['Key'])
+            metadata.delete_object(session)
         except Exception as e:
             return False
     return True
@@ -248,14 +226,16 @@ def get_most_recent_session_path(username: str) -> dict:
     user_data = get_user_data(username)
     if user_data is None:
         return None
-    sessions = s3.list_objects_v2(Bucket=TARGET_BUCKET, Prefix=f'{USERS_FOLDER_PREFIX}/{username}/sessions/')
-    if 'Contents' not in sessions:
+    sessions = metadata.list_objects(f'{USERS_FOLDER_PREFIX}/{username}/sessions/')
+    if not sessions:
         return None
-    most_recent_session = sessions['Contents'][0]
-    for session in sessions['Contents']:
-        if session['LastModified'] > most_recent_session['LastModified']:
+    most_recent_session = sessions[0]
+    for session in sessions:
+        session_data = metadata.head_object(session)
+        most_recent_session_data = metadata.head_object(most_recent_session)
+        if session_data['LastModified'] > most_recent_session_data['LastModified']:
             most_recent_session = session
-    return most_recent_session['Key']
+    return most_recent_session
 
 if __name__ == "__main__":
     token = create_session_token('dantran', 'dantran')

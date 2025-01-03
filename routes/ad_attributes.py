@@ -1,3 +1,4 @@
+from middlewares.authorise import Role, authorise
 from routes import route
 from middlewares.authenticate import authenticate
 from utils import use, jwt
@@ -5,6 +6,7 @@ import hashlib
 import boto3
 import time
 import json
+import utils.metadata_repository as metadata
 
 from configparser import ConfigParser
 config = ConfigParser()
@@ -16,10 +18,9 @@ session = boto3.Session(
     region_name='ap-southeast-2'
 )
 
-META_BUCKET = 'fta-mobile-observations-holding-bucket'
 ADS_BUCKET = 'fta-mobile-observations-v2'
-USERS_FOLDER_PREFIX = 'metadata/dashboard-users'
-AD_ATTRIBUTES_PREFIX = 'metadata/ad-custom-attributes'
+USERS_FOLDER_PREFIX = 'dashboard-users'
+AD_ATTRIBUTES_PREFIX = 'ad-custom-attributes'
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/attributes', 'GET')
 @use(authenticate)
@@ -92,14 +93,9 @@ def get_attributes(event, response):
     ad_id = event['pathParameters']['ad_id']
     observer_id = event['pathParameters']['observer_id']
     timestamp = event['pathParameters']['timestamp']
-    s3 = session.client('s3')
     ad_attributes_path = f'{AD_ATTRIBUTES_PREFIX}/{observer_id}_{timestamp}.{ad_id}.json'
     try:
-        ad_attributes_object = s3.get_object(
-            Bucket=META_BUCKET,
-            Key=ad_attributes_path
-        )
-        ad_attributes_data = json.loads(ad_attributes_object['Body'].read().decode('utf-8'))
+        ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path).decode('utf-8'))
         return {
             "ad_id": ad_id,
             "observer": observer_id,
@@ -116,6 +112,7 @@ def get_attributes(event, response):
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/attributes', 'PUT')
 @use(authenticate)
+@use(authorise(Role.USER, Role.ADMIN))
 def add_properties(event, response):
     """Add or update ad attributes in the database.
 
@@ -200,20 +197,12 @@ def add_properties(event, response):
     print('AD ATTRIBUTES PATH:', ad_attributes_path)
     # Create the ad attributes file if it doesn't exist
     try:
-        s3.head_object(Bucket=META_BUCKET, Key=ad_attributes_path)
+        metadata.head_object(ad_attributes_path)
     except Exception as e:
         print('Creating new ad attributes file...')
-        s3.put_object(
-            Bucket=META_BUCKET,
-            Key=ad_attributes_path,
-            Body=b'{}'
-        )
+        metadata.put_object(ad_attributes_path, b'{}')
     # Load the ad attributes file
-    ad_attributes_object = s3.get_object(
-        Bucket=META_BUCKET,
-        Key=ad_attributes_path
-    )
-    ad_attributes_data = json.loads(ad_attributes_object['Body'].read().decode('utf-8'))
+    ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path).decode('utf-8'))
     print('AD ATTRIBUTES DATA:', ad_attributes_data)
     # If the object already exist, overwrite it and update the modified_at and modified_by fields
     key = attribute['key']
@@ -230,11 +219,7 @@ def add_properties(event, response):
             'modified_at': int(time.time()),
             'modified_by': event['user']['username'],
         }
-    s3.put_object(
-        Bucket=META_BUCKET,
-        Key=ad_attributes_path,
-        Body=json.dumps(ad_attributes_data).encode('utf-8')
-    )
+    metadata.put_object(ad_attributes_path, json.dumps(ad_attributes_data).encode('utf-8'))
     return {
         "success": True,
         "comment": "ATTRIBUTE_SET_SUCCESSFULLY"
@@ -309,13 +294,8 @@ def get_single_attribute(event, response):
     ad_id = event['pathParameters']['ad_id']
     attribute_key = event['pathParameters']['attribute_key']
     ad_attributes_path = f'{AD_ATTRIBUTES_PREFIX}/{observer_id}_{timestamp}.{ad_id}.json'
-    s3 = session.client('s3')
     try:
-        ad_attributes_object = s3.get_object(
-            Bucket=META_BUCKET,
-            Key=ad_attributes_path
-        )
-        ad_attributes_data = json.loads(ad_attributes_object['Body'].read().decode('utf-8'))
+        ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path).decode('utf-8'))
         if attribute_key in ad_attributes_data:
             return ad_attributes_data[attribute_key]
         else:
@@ -331,6 +311,7 @@ def get_single_attribute(event, response):
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/attributes/{attribute_key}', 'DELETE')
 @use(authenticate)
+@use(authorise(Role.USER, Role.ADMIN))
 def delete_properties(event, response):
     """Delete ad attributes from the database.
 
@@ -390,20 +371,11 @@ def delete_properties(event, response):
     ad_id = event['pathParameters']['ad_id']
     attribute_key = event['pathParameters']['attribute_key']
     ad_attributes_path = f'{AD_ATTRIBUTES_PREFIX}/{observer_id}_{timestamp}.{ad_id}.json'
-    s3 = session.client('s3')
     try:
-        ad_attributes_object = s3.get_object(
-            Bucket=META_BUCKET,
-            Key=ad_attributes_path
-        )
-        ad_attributes_data = json.loads(ad_attributes_object['Body'].read().decode('utf-8'))
+        ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path).decode('utf-8'))
         if attribute_key in ad_attributes_data:
             del ad_attributes_data[attribute_key]
-            s3.put_object(
-                Bucket=META_BUCKET,
-                Key=ad_attributes_path,
-                Body=json.dumps(ad_attributes_data).encode('utf-8')
-            )
+            metadata.put_object(ad_attributes_path, json.dumps(ad_attributes_data).encode('utf-8'))
             return {
                 "success": True,
                 "comment": "ATTRIBUTE_DELETED"

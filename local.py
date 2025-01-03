@@ -58,4 +58,5 @@ def main():
     # delete_s3_credentials()
   
 if __name__ == "__main__":
-    main()
+    # main()
+    pass

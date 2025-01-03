@@ -1,10 +1,12 @@
 from middlewares.authenticate import authenticate
+from middlewares.authorise import Role, authorise
 from routes import route
 import s3
 from utils import use
 
 @route('observers', 'GET')
 @use(authenticate)
+@use(authorise(Role.USER, Role.ADMIN))
 # Event not used directly, but needed to authenticate
 def list_observers(event):
     """List all observers.
