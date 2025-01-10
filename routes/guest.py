@@ -9,6 +9,10 @@ import json
 
 SESSION_FOLDER_PREFIX = 'guest-sessions'
 
+def delete_session_utils(session_key, add_prefix=True):
+    session_file_key = f"{SESSION_FOLDER_PREFIX}/{session_key}.json" if add_prefix else session_key
+    metadata.delete_object(session_file_key)
+
 @route('/guests', 'POST')
 @use(authenticate)
 @use(authorise(Role.ADMIN, Role.USER))
@@ -125,6 +129,10 @@ def list_sessions(event, response, context):
     sessions = []
     for key in metadata.list_objects(SESSION_FOLDER_PREFIX):
         session_data = json.loads(metadata.get_object(key))
+        # Check if the session has expired and delete it if it has
+        if session_data['exp'] < int(time.time()):
+            delete_session_utils(key, add_prefix=False)
+            continue
         sessions.append({
             "key": key.split('/')[-1].split('.')[0],
             "data": session_data
@@ -177,10 +185,20 @@ def get_session(event, response, context):
                 comment: "Session not found"
     """
     key = event['pathParameters']['key']
+    
     session_file_key = f"{SESSION_FOLDER_PREFIX}/{key}.json"
 
     try:
         session_data = json.loads(metadata.get_object(session_file_key))
+        # Delete the session if it has expired
+        if session_data['exp'] < int(time.time()):
+            delete_session_utils(key)
+            response.status(404).json({
+                "success": False,
+                "comment": "Session Expired"
+            })
+            return event, response, context
+        
     except metadata.s3.exceptions.NoSuchKey:
         response.status(404).json({
             "success": False,
@@ -244,7 +262,8 @@ def delete_session(event, response, context):
     session_file_key = f"{SESSION_FOLDER_PREFIX}/{key}.json"
 
     try:
-        metadata.delete_object(session_file_key)
+        # metadata.delete_object(session_file_key)
+        delete_session_utils(key)
     except metadata.s3.exceptions.NoSuchKey:
         response.status(404).json({
             "success": False,
