@@ -22,7 +22,7 @@ class RdoBuilder:
     def __init__(self, observer: Observer):
         self.observer = observer
 
-    def compute_ad_dimensions(self, timestamp, ad_id):
+    def get_ad_dimensions(self, timestamp, ad_id):
         """Computes the dimensions of the ad for a given timestamp and ad_id
         
         Args:
@@ -44,7 +44,7 @@ class RdoBuilder:
             "h": height
         }
 
-    def compute_ocr_data(self, timestamp, ad_id):
+    def get_ocr_data(self, timestamp, ad_id):
         """Computes OCR data for a given timestamp and ad_id
 
         Args:
@@ -73,10 +73,6 @@ class RdoBuilder:
             offset_bottom = restitcher_offset.get('b', 0)
             ocr_data_with_offset = []
             for text_match in frame_ocr_data:
-                if text_match.get('y', 0) < offset_top:
-                    continue
-                if text_match.get('y', 0) > offset_bottom:
-                    break
                 text_match_with_offset = {
                     **text_match,
                     "y": text_match.get('y', 0) - offset_top
@@ -90,6 +86,22 @@ class RdoBuilder:
             })
         return outputs
     
+    def get_downloaded_media(self, timestamp, ad_Id):
+        path = f"{self.observer.observer_id}/meta_adlibrary_scrape/{timestamp}.{ad_id}/output_from_mass_download.json"
+        output_from_mass_download = self.observer.read_json_file(path)
+        
+        original_media_url = output_from_mass_download.keys()
+        downloaded_media_paths = {}
+        for url in original_media_url:
+            scrape_output = output_from_mass_download[url]
+            if not "key" in scrape_output:
+                continue
+            downloaded_media_paths[url] = scrape_output["key"]
+        return downloaded_media_paths
+    
+    def get_candidates(self, timestamp, ad_id):
+        output_from_scrape = self.observer.get_output_from_scrape(timestamp, ad_id)
+        return output_from_scrape.get("meta_adlibrary_scrape_output", {}).get("response_interpreted", {}).get("json_raw", [])
     
 if __name__ == "__main__":
     observer_id = "f60b6e94-7625-4044-9153-1f70863f81d8"
@@ -99,4 +111,4 @@ if __name__ == "__main__":
     
     rdo_builder = RdoBuilder(observer)
     
-    print(rdo_builder.compute_ad_dimensions(timestamp, ad_id))
+    print(rdo_builder.get_candidates(timestamp, ad_id))

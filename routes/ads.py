@@ -408,8 +408,28 @@ def get_ads_stream_index(event, response):
         
 # Rich Data Object composer
 
+def parse_ad_params(event, response):
+    observer_id = event['pathParameters'].get('observer_id', None)
+    timestamp = event['pathParameters'].get('timestamp', None)
+    ad_id = event['pathParameters'].get('ad_id', None)
+    if observer_id is None or timestamp is None or ad_id is None:
+        missing_params = []
+        if observer_id is None:
+            missing_params.append('observer_id')
+        if timestamp is None:
+            missing_params.append('timestamp')
+        if ad_id is None:
+            missing_params.append('ad_id')
+        return response.status(400).json({
+            'success': False,
+            'comment': f'MISSING_PARAMETERS: {", ".join(missing_params)}'
+        })
+    event['ad_params'] = [observer_id, timestamp, ad_id]
+    return event, response
+
 @route('ads/{observer_id}/{timestamp}.{ad_id}/rdo/ocr_data', 'GET')
 @use(authenticate)
+@use(parse_ad_params)
 def get_ad_ocr_data(event, response):
     """Retrieve OCR data for an ad.
 
@@ -486,25 +506,10 @@ def get_ad_ocr_data(event, response):
                                 type: string
                                 example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
     """
-    observer_id = event['pathParameters'].get('observer_id', None)
-    timestamp = event['pathParameters'].get('timestamp', None)
-    ad_id = event['pathParameters'].get('ad_id', None)
-    if observer_id is None or timestamp is None or ad_id is None:
-        missing_params = []
-        if observer_id is None:
-            missing_params.append('observer_id')
-        if timestamp is None:
-            missing_params.append('timestamp')
-        if ad_id is None:
-            missing_params.append('ad_id')
-        return response.status(400).json({
-            'success': False,
-            'comment': f'MISSING_PARAMETERS: {", ".join(missing_params)}'
-        })
-        
+    [observer_id, timestamp, ad_id] = event['ad_params']
     observer = observations_repository.Observer(observer_id)
     rdo_builder = RdoBuilder(observer)
-    ocr_data = rdo_builder.compute_ocr_data(timestamp, ad_id)
+    ocr_data = rdo_builder.get_ocr_data(timestamp, ad_id)
     return {
         'success': True,
         'ocr_data': ocr_data
@@ -567,26 +572,86 @@ def get_ad_dimensions(event, response):
                                 type: string
                                 example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
     """
-    observer_id = event['pathParameters'].get('observer_id', None)
-    timestamp = event['pathParameters'].get('timestamp', None)
-    ad_id = event['pathParameters'].get('ad_id', None)
-    if observer_id is None or timestamp is None or ad_id is None:
-        missing_params = []
-        if observer_id is None:
-            missing_params.append('observer_id')
-        if timestamp is None:
-            missing_params.append('timestamp')
-        if ad_id is None:
-            missing_params.append('ad_id')
-        return response.status(400).json({
-            'success': False,
-            'comment': f'MISSING_PARAMETERS: {", ".join(missing_params)}'
-        })
-        
+    [observer_id, timestamp, ad_id] = event['ad_params']
     observer = observations_repository.Observer(observer_id)
     rdo_builder = RdoBuilder(observer)
-    dimensions = rdo_builder.compute_ad_dimensions(timestamp, ad_id)
+    dimensions = rdo_builder.get_ad_dimensions(timestamp, ad_id)
     return {
         'success': True,
         'dimensions': dimensions
+    }
+
+
+@route('ads/{observer_id}/{timestamp}.{ad_id}/rdo/candidates', 'GET')
+@use(authenticate)
+@use(parse_ad_params)
+def get_meta_candidates(event, response):
+    """Retrieve meta candidates for an ad.
+
+    Retrieve meta candidates for the specified ad, including media paths and rankings.
+    ---
+    tags:
+        - ads
+        - rdo
+    parameters:
+        - in: path
+          name: observer_id
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: timestamp
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: ad_id
+          required: true
+          schema:
+              type: string
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            candidates:
+                                type: array
+                                items:
+                                    type: object
+                            media_paths:
+                                type: object
+                                additionalProperties:
+                                    type: string
+                            rankings:
+                                type: object
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
+    """
+    [observer_id, timestamp, ad_id] = event['ad_params']
+    observer = observations_repository.Observer(observer_id)
+    rdo_builder = RdoBuilder(observer)
+    candidates = rdo_builder.get_candidates(timestamp, ad_id)
+    media_paths = rdo_builder.get_downloaded_media(timestamp, ad_id)
+    rankings = None
+    return {
+        'success': True,
+        'candidates': candidates,
+        'media_paths': media_paths,
+        'rankings': rankings
     }
