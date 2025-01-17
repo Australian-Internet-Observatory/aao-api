@@ -22,6 +22,28 @@ class RdoBuilder:
     def __init__(self, observer: Observer):
         self.observer = observer
 
+    def compute_ad_dimensions(self, timestamp, ad_id):
+        """Computes the dimensions of the ad for a given timestamp and ad_id
+        
+        Args:
+            timestamp (int): The timestamp of the observation
+            ad_id (str): The ad_id of the observation
+            
+        Returns:
+            dict: A dictionary containing the width and height of the ad
+        """
+        output_from_restitcher = self.observer.get_output_from_restitcher(timestamp, ad_id)
+        ad_content = self.observer.get_ad_content(timestamp, ad_id)
+        frames = output_from_restitcher['frames']
+        
+        height = max([frame.get("h", 0) for frame in frames])
+        width = ad_content.get("nameValuePairs", {}).get("frameSampleMetadata", {}).get("nameValuePairs", {}).get("statistics", {}).get("nameValuePairs", {}).get("width", 0)
+        
+        return {
+            "w": width,
+            "h": height
+        }
+
     def compute_ocr_data(self, timestamp, ad_id):
         """Computes OCR data for a given timestamp and ad_id
 

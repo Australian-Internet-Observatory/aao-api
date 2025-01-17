@@ -94,6 +94,11 @@ class Observer:
             outputs[mode] = read_json_file(f"{prefix}/{filename}")
         return outputs
 
+    def get_ad_content(self, timestamp, ad_id):
+        prefix = f"{self.observer_id}/temp/{timestamp}.{ad_id}"
+        filename = "adContent.json"
+        return read_json_file(f"{prefix}/{filename}")
+
 # class Observation:
 #     def __init__(self, observer_id, timestamp, ad_id):
 #         self.observer_id = observer_id

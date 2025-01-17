@@ -509,3 +509,84 @@ def get_ad_ocr_data(event, response):
         'success': True,
         'ocr_data': ocr_data
     }
+    
+@route('ads/{observer_id}/{timestamp}.{ad_id}/rdo/dimensions', 'GET')
+@use(authenticate)
+def get_ad_dimensions(event, response):
+    """Retrieve dimensions for an ad.
+
+    Retrieve the width and height of the specified ad.
+    ---
+    tags:
+        - ads
+        - rdo
+    parameters:
+        - in: path
+          name: observer_id
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: timestamp
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: ad_id
+          required: true
+          schema:
+              type: string
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            dimensions:
+                                type: object
+                                properties:
+                                    w:
+                                        type: integer
+                                    h:
+                                        type: integer
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
+    """
+    observer_id = event['pathParameters'].get('observer_id', None)
+    timestamp = event['pathParameters'].get('timestamp', None)
+    ad_id = event['pathParameters'].get('ad_id', None)
+    if observer_id is None or timestamp is None or ad_id is None:
+        missing_params = []
+        if observer_id is None:
+            missing_params.append('observer_id')
+        if timestamp is None:
+            missing_params.append('timestamp')
+        if ad_id is None:
+            missing_params.append('ad_id')
+        return response.status(400).json({
+            'success': False,
+            'comment': f'MISSING_PARAMETERS: {", ".join(missing_params)}'
+        })
+        
+    observer = observations_repository.Observer(observer_id)
+    rdo_builder = RdoBuilder(observer)
+    dimensions = rdo_builder.compute_ad_dimensions(timestamp, ad_id)
+    return {
+        'success': True,
+        'dimensions': dimensions
+    }
