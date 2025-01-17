@@ -37,7 +37,7 @@ class RdoBuilder:
         frames = output_from_restitcher['frames']
         
         height = max([frame.get("h", 0) for frame in frames])
-        width = ad_content.get("nameValuePairs", {}).get("frameSampleMetadata", {}).get("nameValuePairs", {}).get("statistics", {}).get("nameValuePairs", {}).get("width", 0)
+        width = ad_content.get("nameValuePairs", {}).get("frameSampleMetadata", {}).get("nameValuePairs", {}).get("statistics", {}).get("nameValuePairs", {}).get("w", 0)
         
         return {
             "w": width,
@@ -89,3 +89,14 @@ class RdoBuilder:
                 "ocr_data": ocr_data_with_offset
             })
         return outputs
+    
+    
+if __name__ == "__main__":
+    observer_id = "f60b6e94-7625-4044-9153-1f70863f81d8"
+    timestamp = "1729569092202"
+    ad_id = "d14f1dc0-5685-49e5-83d9-c46e29139373"
+    observer = Observer(observer_id)
+    
+    rdo_builder = RdoBuilder(observer)
+    
+    print(rdo_builder.compute_ad_dimensions(timestamp, ad_id))

@@ -115,5 +115,3 @@ if __name__ == "__main__":
     ad_id = "d14f1dc0-5685-49e5-83d9-c46e29139373"
     observer = Observer(observer_id)
     
-    rdo_builder = RdoBuilder(observer)
-    print(rdo_builder.compute_ocr_data(timestamp, ad_id))
