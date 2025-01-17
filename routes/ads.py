@@ -2,9 +2,10 @@ import datetime
 import json
 
 import dateutil.tz
+from enricher import RdoBuilder
 from middlewares.authenticate import authenticate
 from routes import route
-import s3
+import observations_repository
 from utils import use
 
 @route('ads/{observer_id}', 'GET') # get-access-cache?observer_id=5ea80108-154d-4a7f-8189-096c0641cd87
@@ -69,7 +70,7 @@ def get_access_cache(event, response):
         })
     if observer_id.endswith('/'):
         observer_id = observer_id[:-1]
-    observer_data = s3.read_json_file(f'{observer_id}/quick_access_cache.json')
+    observer_data = observations_repository.read_json_file(f'{observer_id}/quick_access_cache.json')
     if observer_data is None:
         return response.status(404).json({
             'success': False,
@@ -152,7 +153,7 @@ def get_stitching_frames_presigned(event, response):
     if not path.endswith('/'):
         path += '/'
     # List the frames at the path
-    frames = s3.list_dir(path)
+    frames = observations_repository.list_dir(path)
     # print(s3.list_dir(f'{observer_id}/temp'))
     frame_paths = [f'{frame}' for frame in frames]
     
@@ -162,10 +163,10 @@ def get_stitching_frames_presigned(event, response):
     for frame_path in frame_paths:
         if not any([frame_path.endswith(ext) for ext in image_extensions]):
             continue
-        presigned_url = s3.client.generate_presigned_url(
+        presigned_url = observations_repository.client.generate_presigned_url(
             ClientMethod='get_object',
             Params={
-                'Bucket': s3.MOBILE_OBSERVATIONS_BUCKET,
+                'Bucket': observations_repository.MOBILE_OBSERVATIONS_BUCKET,
                 'Key': frame_path
             }
         )
@@ -251,7 +252,7 @@ def get_frames_presigned(event, response):
     if not path.endswith('/'):
         path += '/'
     # List the frames at the path
-    frames = s3.list_dir(path)
+    frames = observations_repository.list_dir(path)
     print(path)
     # print(s3.list_dir(f'{observer_id}/temp'))
     frame_paths = [f'{frame}' for frame in frames]
@@ -262,10 +263,10 @@ def get_frames_presigned(event, response):
     for frame_path in frame_paths:
         if not any([frame_path.endswith(ext) for ext in image_extensions]):
             continue
-        presigned_url = s3.client.generate_presigned_url(
+        presigned_url = observations_repository.client.generate_presigned_url(
             ClientMethod='get_object',
             Params={
-                'Bucket': s3.MOBILE_OBSERVATIONS_BUCKET,
+                'Bucket': observations_repository.MOBILE_OBSERVATIONS_BUCKET,
                 'Key': frame_path
             }
         )
@@ -285,7 +286,7 @@ def try_compute_ads_stream_index():
     """
     # Check if the ads_stream.json file exists and is not older than 24 hours
     INDEX_FILENAME = 'ads_stream.json'
-    index_obj = s3.try_get_object(key=INDEX_FILENAME)
+    index_obj = observations_repository.try_get_object(key=INDEX_FILENAME)
     if index_obj is not None:
         # Terminate if the file is not older than 24 hours
         last_modified = index_obj['LastModified']
@@ -293,11 +294,11 @@ def try_compute_ads_stream_index():
         cache_age = now - last_modified
         print(f'Found cache file. Cache age: {cache_age}')
         if cache_age < datetime.timedelta(days=1):
-            return s3.read_json_file(INDEX_FILENAME)
+            return observations_repository.read_json_file(INDEX_FILENAME)
 
     # List all observers
     print('Cache expired or not found. Computing ads stream index...')
-    observers = s3.list_dir()
+    observers = observations_repository.list_dir()
     
     ads_stream_index = {}
     # For each observer, 
@@ -306,7 +307,7 @@ def try_compute_ads_stream_index():
     for observer_id in observers:
         if observer_id.endswith('/'):
             observer_id = observer_id[:-1]
-        observer_data = s3.read_json_file(f'{observer_id}/quick_access_cache.json')
+        observer_data = observations_repository.read_json_file(f'{observer_id}/quick_access_cache.json')
         if observer_data is None:
             continue
         keys = observer_data.keys()
@@ -340,8 +341,8 @@ def try_compute_ads_stream_index():
     
     print("Writing ads stream index to files...")
     # Save the ads stream index to the ads_stream.json file
-    s3.client.put_object(
-        Bucket=s3.MOBILE_OBSERVATIONS_BUCKET,
+    observations_repository.client.put_object(
+        Bucket=observations_repository.MOBILE_OBSERVATIONS_BUCKET,
         Key=INDEX_FILENAME,
         Body=json.dumps(ads_stream_index).encode('utf-8')
     )
@@ -387,10 +388,10 @@ def get_ads_stream_index(event, response):
     try:
         try_compute_ads_stream_index()
         INDEX_FILENAME = 'ads_stream.json'
-        presigned_url = s3.client.generate_presigned_url(
+        presigned_url = observations_repository.client.generate_presigned_url(
             ClientMethod='get_object',
             Params={
-                'Bucket': s3.MOBILE_OBSERVATIONS_BUCKET,
+                'Bucket': observations_repository.MOBILE_OBSERVATIONS_BUCKET,
                 'Key': INDEX_FILENAME
             }
         )
@@ -404,3 +405,107 @@ def get_ads_stream_index(event, response):
             'comment': f'FAILED_TO_COMPUTE_ADS_STREAM_INDEX',
             'error': str(e)
         })
+        
+# Rich Data Object composer
+
+@route('ads/{observer_id}/{timestamp}.{ad_id}/rdo/ocr_data', 'GET')
+@use(authenticate)
+def get_ad_ocr_data(event, response):
+    """Retrieve OCR data for an ad.
+
+    Retrieve OCR data for the specified ad, including text matches and their positions.
+    ---
+    tags:
+        - ads
+        - rdo
+    parameters:
+        - in: path
+          name: observer_id
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: timestamp
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: ad_id
+          required: true
+          schema:
+              type: string
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            ocr_data:
+                                type: array
+                                items:
+                                    type: object
+                                    properties:
+                                        screenshot_cropped:
+                                            type: string
+                                        y_offset:
+                                            type: integer
+                                        observed_at:
+                                            type: string
+                                        ocr_data:
+                                            type: array
+                                            items:
+                                                type: object
+                                                properties:
+                                                    text:
+                                                        type: string
+                                                    x:
+                                                        type: integer
+                                                    y:
+                                                        type: integer
+                                                    width:
+                                                        type: integer
+                                                    height:
+                                                        type: integer
+                                                    confidence:
+                                                        type: number
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
+    """
+    observer_id = event['pathParameters'].get('observer_id', None)
+    timestamp = event['pathParameters'].get('timestamp', None)
+    ad_id = event['pathParameters'].get('ad_id', None)
+    if observer_id is None or timestamp is None or ad_id is None:
+        missing_params = []
+        if observer_id is None:
+            missing_params.append('observer_id')
+        if timestamp is None:
+            missing_params.append('timestamp')
+        if ad_id is None:
+            missing_params.append('ad_id')
+        return response.status(400).json({
+            'success': False,
+            'comment': f'MISSING_PARAMETERS: {", ".join(missing_params)}'
+        })
+        
+    observer = observations_repository.Observer(observer_id)
+    rdo_builder = RdoBuilder(observer)
+    ocr_data = rdo_builder.compute_ocr_data(timestamp, ad_id)
+    return {
+        'success': True,
+        'ocr_data': ocr_data
+    }
