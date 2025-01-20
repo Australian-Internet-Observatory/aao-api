@@ -1,5 +1,5 @@
 
-from observations_repository import Observer
+from utils.observations_repository import Observer
 from dataclasses import dataclass
 
 @dataclass
@@ -33,7 +33,17 @@ class RdoBuilder:
             dict: A dictionary containing the width and height of the ad
         """
         output_from_restitcher = self.observer.get_output_from_restitcher(timestamp, ad_id)
+        if not output_from_restitcher:
+            return {
+                "w": 0,
+                "h": 0
+            }
         ad_content = self.observer.get_ad_content(timestamp, ad_id)
+        if not ad_content:
+            return {
+                "w": 0,
+                "h": 0
+            }
         frames = output_from_restitcher['frames']
         
         height = max([frame.get("h", 0) for frame in frames])
@@ -55,7 +65,12 @@ class RdoBuilder:
             list[OcrDataKeyframe]: A list of OcrDataKeyframe objects containing the OCR matches for each keyframe, relative to the top of the re-stitched image
         """
         output_from_scrape = self.observer.get_output_from_scrape(timestamp, ad_id)
+        if not output_from_scrape:
+            return []
+        
         output_from_restitcher = self.observer.get_output_from_restitcher(timestamp, ad_id)
+        if not output_from_restitcher:
+            return []
         
         frames = output_from_restitcher['frames']
         raw_ocr_data = output_from_scrape['ocr_data']
@@ -86,9 +101,11 @@ class RdoBuilder:
             })
         return outputs
     
-    def get_downloaded_media(self, timestamp, ad_Id):
-        path = f"{self.observer.observer_id}/meta_adlibrary_scrape/{timestamp}.{ad_id}/output_from_mass_download.json"
+    def get_downloaded_media(self, timestamp, ad_id):
+        path = f"meta_adlibrary_scrape/{timestamp}.{ad_id}/output_from_mass_download.json"
         output_from_mass_download = self.observer.read_json_file(path)
+        if not output_from_mass_download:
+            return {}
         
         original_media_url = output_from_mass_download.keys()
         downloaded_media_paths = {}
@@ -101,7 +118,21 @@ class RdoBuilder:
     
     def get_candidates(self, timestamp, ad_id):
         output_from_scrape = self.observer.get_output_from_scrape(timestamp, ad_id)
+        if not output_from_scrape:
+            return []
         return output_from_scrape.get("meta_adlibrary_scrape_output", {}).get("response_interpreted", {}).get("json_raw", [])
+    
+    def get_rankings(self, timestamp, ad_id):
+        path = f"rdo/{timestamp}.{ad_id}/output.json"
+        rdo_data = self.observer.read_json_file(path)
+        if not rdo_data:
+            return None
+        
+        key_path = ['enrichment', 'meta_adlibrary_scrape', 'rankings']
+        for key in key_path[:-1]:
+            rdo_data = rdo_data.get(key, {})
+        rankings = rdo_data.get(key_path[-1], None)
+        return rankings
     
 if __name__ == "__main__":
     observer_id = "f60b6e94-7625-4044-9153-1f70863f81d8"
@@ -111,4 +142,4 @@ if __name__ == "__main__":
     
     rdo_builder = RdoBuilder(observer)
     
-    print(rdo_builder.get_candidates(timestamp, ad_id))
+    print(rdo_builder.get_rankings(timestamp, ad_id))

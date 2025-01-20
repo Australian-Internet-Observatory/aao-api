@@ -1,7 +1,7 @@
 from middlewares.authenticate import authenticate
 from middlewares.authorise import Role, authorise
 from routes import route
-import observations_repository
+import utils.observations_repository as observations_repository
 from utils import use
 
 @route('observers', 'GET')

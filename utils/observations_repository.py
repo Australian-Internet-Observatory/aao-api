@@ -70,7 +70,7 @@ class Observer:
         # ]
         
     def read_json_file(self, path):
-        return read_json_file(f"{self.prefix}/{path}")
+        return read_json_file(f"{self.observer_id}/{path}")
     
     def get_output_from_scrape(self, timestamp, ad_id):
         prefix = f"{self.observer_id}/meta_adlibrary_scrape/{timestamp}.{ad_id}"
@@ -110,8 +110,9 @@ class Observer:
 #         return read_json_file(f"{prefix}/{path}")
 
 if __name__ == "__main__":
-    observer_id = "f60b6e94-7625-4044-9153-1f70863f81d8"
-    timestamp = "1729569092202"
-    ad_id = "d14f1dc0-5685-49e5-83d9-c46e29139373"
-    observer = Observer(observer_id)
+    # observer_id = "f60b6e94-7625-4044-9153-1f70863f81d8"
+    # timestamp = "1729569092202"
+    # ad_id = "d14f1dc0-5685-49e5-83d9-c46e29139373"
+    # observer = Observer(observer_id)
+    pass
     

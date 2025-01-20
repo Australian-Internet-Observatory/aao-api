@@ -7,7 +7,7 @@ from utils import use
 import base64
 import json
 from routes import routes
-import observations_repository
+import utils.observations_repository as observations_repository
 
 
 @route('reflect', 'POST')

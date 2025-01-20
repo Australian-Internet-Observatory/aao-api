@@ -4,7 +4,7 @@ import json
 import dateutil.tz
 from middlewares.authenticate import authenticate
 from routes import route
-import observations_repository
+import utils.observations_repository as observations_repository
 from utils import Response, use
 
 @route('medias', 'GET')

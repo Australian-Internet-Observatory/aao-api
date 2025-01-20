@@ -5,8 +5,9 @@ import dateutil.tz
 from enricher import RdoBuilder
 from middlewares.authenticate import authenticate
 from routes import route
-import observations_repository
+import utils.observations_repository as observations_repository
 from utils import use
+from utils.query import AdQuery
 
 @route('ads/{observer_id}', 'GET') # get-access-cache?observer_id=5ea80108-154d-4a7f-8189-096c0641cd87
 @use(authenticate)
@@ -408,7 +409,7 @@ def get_ads_stream_index(event, response):
         
 # Rich Data Object composer
 
-def parse_ad_params(event, response):
+def parse_ad_params(event, response, context):
     observer_id = event['pathParameters'].get('observer_id', None)
     timestamp = event['pathParameters'].get('timestamp', None)
     ad_id = event['pathParameters'].get('ad_id', None)
@@ -420,12 +421,13 @@ def parse_ad_params(event, response):
             missing_params.append('timestamp')
         if ad_id is None:
             missing_params.append('ad_id')
-        return response.status(400).json({
+        response.status(400).json({
             'success': False,
             'comment': f'MISSING_PARAMETERS: {", ".join(missing_params)}'
         })
+        return event, response, context
     event['ad_params'] = [observer_id, timestamp, ad_id]
-    return event, response
+    return event, response, context
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/rdo/ocr_data', 'GET')
 @use(authenticate)
@@ -506,7 +508,7 @@ def get_ad_ocr_data(event, response):
                                 type: string
                                 example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
     """
-    [observer_id, timestamp, ad_id] = event['ad_params']
+    observer_id, timestamp, ad_id = event['ad_params']
     observer = observations_repository.Observer(observer_id)
     rdo_builder = RdoBuilder(observer)
     ocr_data = rdo_builder.get_ocr_data(timestamp, ad_id)
@@ -517,6 +519,7 @@ def get_ad_ocr_data(event, response):
     
 @route('ads/{observer_id}/{timestamp}.{ad_id}/rdo/dimensions', 'GET')
 @use(authenticate)
+@use(parse_ad_params)
 def get_ad_dimensions(event, response):
     """Retrieve dimensions for an ad.
 
@@ -572,7 +575,7 @@ def get_ad_dimensions(event, response):
                                 type: string
                                 example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
     """
-    [observer_id, timestamp, ad_id] = event['ad_params']
+    observer_id, timestamp, ad_id = event['ad_params']
     observer = observations_repository.Observer(observer_id)
     rdo_builder = RdoBuilder(observer)
     dimensions = rdo_builder.get_ad_dimensions(timestamp, ad_id)
@@ -643,15 +646,102 @@ def get_meta_candidates(event, response):
                                 type: string
                                 example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
     """
-    [observer_id, timestamp, ad_id] = event['ad_params']
+    observer_id, timestamp, ad_id = event['ad_params']
     observer = observations_repository.Observer(observer_id)
     rdo_builder = RdoBuilder(observer)
     candidates = rdo_builder.get_candidates(timestamp, ad_id)
     media_paths = rdo_builder.get_downloaded_media(timestamp, ad_id)
-    rankings = None
+    rankings = rdo_builder.get_rankings(timestamp, ad_id)
     return {
         'success': True,
         'candidates': candidates,
         'media_paths': media_paths,
         'rankings': rankings
     }
+    
+@route('ads/query', 'POST')
+def query(event, response):
+    """Query ads based on specified criteria.
+
+    Perform a query on ads using the specified criteria and return the matching ad paths.
+    ---
+    tags:
+        - ads
+    requestBody:
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        method:
+                            type: string
+                            example: OR
+                        args:
+                            type: array
+                            items:
+                                type: object
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            result:
+                                type: array
+                                items:
+                                    type: string
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'INVALID_QUERY'
+    """
+    # Example query:
+    # {
+    #     "method": "OR",
+    #     "args": [
+    #     {
+    #         "method": "AND",
+    #         "args": [
+    #         {
+    #             "method": "MATCH",
+    #             "args": ["cats"]
+    #         },
+    #         {
+    #             "method": "MATCH",
+    #             "args": ["dogs"]
+    #         }
+    #         ]
+    #     },
+    #     {
+    #         "method": "MATCH",
+    #         "args": ["bird"]
+    #     }
+    #     ]
+    # }
+    query_dict = event['body']
+    ad_query = AdQuery()
+    try:
+        result = ad_query.query(query_dict) # List of ad paths that satisfy the query
+        return {
+            'success': True,
+            'result': result
+        }
+    except Exception as e:
+        return response.status(400).json({
+            'success': False,
+            'comment': f"Error executing query: {str(e)}"
+        })
