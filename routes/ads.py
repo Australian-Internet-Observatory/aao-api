@@ -660,6 +660,7 @@ def get_meta_candidates(event, response):
     }
     
 @route('ads/query', 'POST')
+@use(authenticate)
 def query(event, response):
     """Query ads based on specified criteria.
 

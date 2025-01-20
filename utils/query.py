@@ -1,4 +1,4 @@
-import observations_repository
+import utils.observations_repository as observations_repository
 
 methods = {}
 
