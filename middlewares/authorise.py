@@ -6,7 +6,7 @@ class Role(Enum):
     USER = "user"       # Authenticated user.
     
     @staticmethod
-    def from_string(role: str):
+    def parse(role: str):
         return Role[role.upper()]
 
 def authorise(*roles: list[Role]):
@@ -19,7 +19,7 @@ def authorise(*roles: list[Role]):
             })
             return event, response, context
         user = event['user']
-        user_role = Role.from_string(user['role'])
+        user_role = Role.parse(user['role'])
         if user_role not in roles:
             response.status(403).json({
                 "success": False,

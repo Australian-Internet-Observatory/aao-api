@@ -433,7 +433,7 @@ def parse_ad_params(event, response, context):
 @use(authenticate)
 @use(parse_ad_params)
 def get_ad_ocr_data(event, response):
-    """Retrieve OCR data for an ad.
+    """Retrieve OCR data for an ad, relative to the stitched frames.
 
     Retrieve OCR data for the specified ad, including text matches and their positions.
     ---
@@ -512,6 +512,99 @@ def get_ad_ocr_data(event, response):
     observer = observations_repository.Observer(observer_id)
     rdo_builder = RdoBuilder(observer)
     ocr_data = rdo_builder.get_ocr_data(timestamp, ad_id)
+    return {
+        'success': True,
+        'ocr_data': ocr_data
+    }
+    
+@route('ads/{observer_id}/{timestamp}.{ad_id}/rdo/ocr_data/raw', 'GET')
+@use(authenticate)
+@use(parse_ad_params)
+def get_ad_raw_ocr_data(event, response):
+    """Retrieve OCR data for an ad, relative to the raw frames.
+
+    Retrieve raw OCR data for the specified ad, including text matches and their positions relative to the raw frames. This may include personal or irrelevant information.
+    ---
+    tags:
+        - ads
+        - rdo
+    parameters:
+        - in: path
+          name: observer_id
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: timestamp
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: ad_id
+          required: true
+          schema:
+              type: string
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            ocr_data:
+                                type: array
+                                items:
+                                    type: object
+                                    properties:
+                                        screenshot_cropped:
+                                            type: string
+                                        observed_at:
+                                            type: string
+                                        ocr_data:
+                                            type: array
+                                            items:
+                                                type: object
+                                                properties:
+                                                    text:
+                                                        type: string
+                                                    x:
+                                                        type: integer
+                                                    y:
+                                                        type: integer
+                                                    width:
+                                                        type: integer
+                                                    height:
+                                                        type: integer
+                                                    confidence:
+                                                        type: number
+                                        y_source:
+                                            type: object
+                                            properties:
+                                                t:
+                                                    type: integer
+                                                b:
+                                                    type: integer
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
+    """
+    observer_id, timestamp, ad_id = event['ad_params']
+    observer = observations_repository.Observer(observer_id)
+    rdo_builder = RdoBuilder(observer)
+    ocr_data = rdo_builder.get_raw_ocr_data(timestamp, ad_id)
     return {
         'success': True,
         'ocr_data': ocr_data

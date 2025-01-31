@@ -255,7 +255,7 @@ def edit_user(event, response):
     """
     caller = event['user']
     # Only editable by self, or admin
-    if caller['username'] != event['pathParameters']['username'] and caller['role'] != Role.ADMIN:
+    if caller['username'] != event['pathParameters']['username'] and Role.parse(caller['role']) != Role.ADMIN:
         return response.status(403).json({
             "success": False,
             "comment": "UNAUTHORIZED"
@@ -285,7 +285,7 @@ def edit_user(event, response):
             })
     
     # Ensure the role is only updated by an admin
-    if 'role' in new_data and caller['role'] != Role.ADMIN:
+    if 'role' in new_data and Role.parse(caller['role']) != Role.ADMIN:
         return response.status(403).json({
             "success": False,
             "comment": "UNAUTHORIZED"
@@ -421,7 +421,7 @@ def get_user(event, response):
     
     # Only admin or self can view
     caller = event['user']
-    if caller['username'] != event['pathParameters']['username'] and caller['role'] != Role.ADMIN:
+    if caller['username'] != event['pathParameters']['username'] and Role.parse(caller['role']) != Role.ADMIN:
         return response.status(403).json({
             "success": False,
             "comment": "UNAUTHORIZED"

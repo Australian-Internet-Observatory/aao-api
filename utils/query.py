@@ -58,7 +58,7 @@ def parse_path(ad_path):
         "observation_id": parts[2].split(".")[1]
     }
 
-@register("DATETIME AFTER", limit_args=1)
+@register("DATETIME_AFTER", limit_args=1)
 def DATETIME_AFTER(args: list[str], ad_path, context):
     """Check if the timestamp of the ad is after the given date.
 
@@ -72,17 +72,17 @@ def DATETIME_AFTER(args: list[str], ad_path, context):
     ad_data = parse_path(ad_path)
     return ad_data["timestamp"] > int(args[0])
 
-@register("DATETIME BEFORE", limit_args=1)
+@register("DATETIME_BEFORE", limit_args=1)
 def DATETIME_BEFORE(args: list[str], ad_path, context):
     ad_data = parse_path(ad_path)
     return ad_data["timestamp"] < int(args[0])
 
-@register("OBSERVER ID CONTAINS", limit_args=-1)
+@register("OBSERVER_ID_CONTAINS", limit_args=-1)
 def OBSERVER_IN(args: list[str], ad_path, context):
     ad_data = parse_path(ad_path)
     return any(arg in ad_data["observer_id"] for arg in args)
 
-@register("OBSERVATION ID CONTAINS", limit_args=-1)
+@register("OBSERVATION_ID_CONTAINS", limit_args=-1)
 def OBSERVATION_IN(args: list[str], ad_path, context):
     ad_data = parse_path(ad_path)
     return any(arg in ad_data["observation_id"] for arg in args)
@@ -104,9 +104,11 @@ class AdQuery:
         
     @staticmethod
     def get_ads_index():
+        ACCEPTED_TYPES = ['ads_passed_mass_download', 'ads_passed_rdo_construction']
+        
         index = observations_repository.read_json_file("ads_stream.json")
         # Convert the index to a dict of sets for faster lookup
-        return {key: set(value) for key, value in index.items()}
+        return {key: set(value) for key, value in index.items() if key in ACCEPTED_TYPES}
 
 
 if __name__ == "__main__":
@@ -115,11 +117,11 @@ if __name__ == "__main__":
         "method": "AND",
         "args": [
             {
-                "method": "DATETIME AFTER",
+                "method": "DATETIME_AFTER",
                 "args": ["1731012025609"]
             },
             {
-                "method": "OBSERVER ID CONTAINS",
+                "method": "OBSERVER_ID_CONTAINS",
                 "args": ["442eca3f"]
             }
         ]
