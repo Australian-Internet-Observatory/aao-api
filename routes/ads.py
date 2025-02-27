@@ -7,7 +7,8 @@ from middlewares.authenticate import authenticate
 from routes import route
 import utils.observations_repository as observations_repository
 from utils import use
-from utils.query import AdQuery
+# from utils.query import AdQuery
+from utils.opensearch import AdQuery
 
 @route('ads/{observer_id}', 'GET') # get-access-cache?observer_id=5ea80108-154d-4a7f-8189-096c0641cd87
 @use(authenticate)

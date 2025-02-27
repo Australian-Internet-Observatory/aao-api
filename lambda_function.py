@@ -1,4 +1,5 @@
 import datetime
+import traceback
 import dateutil.tz
 from middlewares import parse_body
 from middlewares.authenticate import authenticate
@@ -66,6 +67,7 @@ def lambda_handler(event_raw, context):
         route, path_params = parse_path_parameters(path)
         print(f'Route: {route}')
         print(f'Path params: {path_params}')
+        print(f'Method: {method}')
         if path_params is not None and len(path_params) > 0:
             event['pathParameters'] = path_params
         
@@ -87,6 +89,7 @@ def lambda_handler(event_raw, context):
             })
         }
     except Exception as e:
+        print(traceback.format_exc())
         return {
             'statusCode': 500,
             'isBase64Encoded': False,

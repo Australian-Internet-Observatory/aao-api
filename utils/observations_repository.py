@@ -55,7 +55,6 @@ def try_get_object(key, bucket=MOBILE_OBSERVATIONS_BUCKET):
     except Exception as e:
         return None
 
-
 class Observer:
     def __init__(self, observer_id):
         self.observer_id = observer_id
