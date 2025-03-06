@@ -430,6 +430,66 @@ def parse_ad_params(event, response, context):
     event['ad_params'] = [observer_id, timestamp, ad_id]
     return event, response, context
 
+@route('ads/{observer_id}/{timestamp}.{ad_id}/rdo', 'GET')
+@use(authenticate)
+@use(parse_ad_params)
+def get_ad_rdo(event, response):
+    """Retrieve the full Rich Data Object for an ad.
+
+    The Rich Data Object (RDO) is a comprehensive data object that includes all the information, including any enrichments, for the specified ad.
+    ---
+    tags:
+        - rdo
+    parameters:
+        - in: path
+          name: observer_id
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: timestamp
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: ad_id
+          required: true
+          schema:
+              type: string
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: True
+                            data:
+                                type: object
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
+    """
+    observer_id, timestamp, ad_id = event['ad_params']
+    observer = observations_repository.Observer(observer_id)
+    return {
+        'success': True,
+        'data': observer.get_pre_constructed_rdo(timestamp, ad_id)
+    }
+
 @route('ads/{observer_id}/{timestamp}.{ad_id}/rdo/ocr_data', 'GET')
 @use(authenticate)
 @use(parse_ad_params)
@@ -439,7 +499,6 @@ def get_ad_ocr_data(event, response):
     Retrieve OCR data for the specified ad, including text matches and their positions.
     ---
     tags:
-        - ads
         - rdo
     parameters:
         - in: path
@@ -527,7 +586,6 @@ def get_ad_raw_ocr_data(event, response):
     Retrieve raw OCR data for the specified ad, including text matches and their positions relative to the raw frames. This may include personal or irrelevant information.
     ---
     tags:
-        - ads
         - rdo
     parameters:
         - in: path
@@ -620,7 +678,6 @@ def get_ad_dimensions(event, response):
     Retrieve the width and height of the specified ad.
     ---
     tags:
-        - ads
         - rdo
     parameters:
         - in: path
@@ -688,7 +745,6 @@ def get_meta_candidates(event, response):
     Retrieve meta candidates for the specified ad, including media paths and rankings.
     ---
     tags:
-        - ads
         - rdo
     parameters:
         - in: path
