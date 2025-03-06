@@ -18,11 +18,17 @@ function_name = config['DEPLOYMENT']['LAMBDA_FUNCTION_NAME']
 def deploy_lambda():
     with open(zip_file, 'rb') as f:
         zipped_code = f.read()
+    print(f'Updating {function_name} with {zip_file}')
     response = lambda_client.update_function_code(
         FunctionName=function_name,
         ZipFile=zipped_code,
         Publish=True
     )
-    print(json.dumps(response, indent=2))
+    if response['ResponseMetadata']['HTTPStatusCode'] == 200:
+        print(f'{function_name} updated successfully')
+    else:
+        print(f'Error updating {function_name}')
+        print(json.dumps(response, indent=2))
+    # print(json.dumps(response, indent=2))
     
 deploy_lambda()
