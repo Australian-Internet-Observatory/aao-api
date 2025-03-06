@@ -1,6 +1,8 @@
 # Project-specific files
 swagger.yaml
 tests.py
+temp
+lambda-deployment-package.zip
 
 # Config - SECRET DO NOT SHARE!!!
 config.ini
