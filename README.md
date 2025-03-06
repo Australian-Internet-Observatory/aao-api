@@ -32,6 +32,11 @@ Additionally, you will need to create a `config.ini` file in the root directory 
 
 To deploy the AWS Lambda function, follow these steps:
 
+```shell
+./scripts/package.ps1
+python -m scripts.deploy
+```
+
 1. **Create the deployment package**:
    
 From the root directory, run the `package.ps1` script to create the deployment package. This script will create a ZIP file containing the code and dependencies.
