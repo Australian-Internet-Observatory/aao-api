@@ -1,15 +1,16 @@
 from routes import get_path_param_keys, parse_path_parameters, routes
 import yaml
-import lambda_function # To capture routes not in 'routes' folder
+import lambda_function
+from scripts.parse_schemas import create_openapi_schema # To capture routes not in 'routes' folder
 
 api_description = """
 openapi: 3.0.3
 info:
   title: Australian Ad Observatory API
   description: |-
-    This is the API for the Australian Ad Observatory.
+    This is the documentation for the API used in the Australian Ad Observatory (AAO) project.
     
-    I will try to come up with a better description later.
+    The API is used to access the data collected by the AAO, with a focus on the data collected from the Australian Mobile Ad Toolkit on Android devices. The toolkit collects data on the ads displayed on the device, including the ad content, the app displaying the ad and more. To use this API, you will need to authenticate using a JWT token through an account granted by the AAO team.
   termsOfService: http://swagger.io/terms/
   contact:
     email: d.k.tran@uq.edu.au
@@ -22,6 +23,9 @@ externalDocs:
   url: https://www.admscentre.org.au/adobservatory/
 servers:
   - url: https://f06kj1k332.execute-api.ap-southeast-2.amazonaws.com/dev/
+"""
+
+components = """
 components:
   securitySchemes:
     bearerAuth:
@@ -114,10 +118,11 @@ def generate_routes_docs():
 def main():
     routes_docs = generate_routes_docs()
     api_docs = format_docstring(api_description)
+    schemas = create_openapi_schema(base_indent=2)
     # print(api_docs + routes_docs)
     # Save the documentation to a file
     with open("swagger.yaml", "w") as f:
-        f.write(api_docs + routes_docs)
+        f.write(api_docs + routes_docs + components + schemas)
 
 if __name__ == "__main__":
     main()
