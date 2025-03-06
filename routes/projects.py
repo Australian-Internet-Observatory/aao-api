@@ -34,6 +34,8 @@ def get_all_projects():
 def create_project(event, response, context):
     """Create a new project.
     ---
+    tags:
+      - projects
     requestBody:
       required: true
       content:
@@ -75,6 +77,8 @@ def create_project(event, response, context):
 def list_projects(event, response, context):
     """List all projects where the user is a part of (either owner, or if the user is an admin, all projects).
     ---
+    tags:
+      - projects
     responses:
       200:
         description: List of projects
@@ -99,6 +103,8 @@ def list_projects(event, response, context):
 def get_project(event, response, context):
     """Get a project by ID.
     ---
+    tags:
+      - projects
     parameters:
       - in: path
         name: project_id
@@ -128,6 +134,8 @@ def get_project(event, response, context):
 def update_project(event, response, context):
     """Update a project by ID.
     ---
+    tags:
+      - projects
     parameters:
       - in: path
         name: project_id
@@ -170,6 +178,8 @@ def update_project(event, response, context):
 def delete_project(event, response, context):
     """Delete a project by ID.
     ---
+    tags:
+      - projects
     parameters:
       - in: path
         name: project_id
