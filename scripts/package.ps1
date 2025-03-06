@@ -7,7 +7,7 @@ New-Item -ItemType Directory -Path $TempDir -Force
 
 # Copy all files to the temporary directory, excluding the following
 # folders: .git, .vscode, temp, __pycache__, .venv
-$ExcludedDirs = @(".git", ".github", ".vscode", "temp", "__pycache__", ".venv", "docs", "package.ps1", "README.md", "swagger.yaml", "tests.py", $ZipFileName)
+$ExcludedDirs = @(".git", ".github", ".vscode", "temp", "__pycache__", ".venv", "docs", "package.ps1", "README.md", "swagger.yaml", "tests.py", "scripts", $ZipFileName)
 Copy-Item .\* -Destination $TempDir -Recurse -Exclude $ExcludedDirs -Force
 
 # Copy the dependencies to the temporary directory

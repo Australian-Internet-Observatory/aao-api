@@ -27,7 +27,7 @@ jobs:
 
       - name: Generate OpenAPI spec
         run: |
-          python docgen.py
+          python -m scripts.docgen
       - name: Upload OpenAPI spec
         uses: actions/upload-artifact@v4
         with:

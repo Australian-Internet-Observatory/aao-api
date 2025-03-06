@@ -28,12 +28,34 @@ pip install -r requirements.txt
 
 Additionally, you will need to create a `config.ini` file in the root directory of the project to store the AWS credentials and other settings. An example `sample_config.ini` is provided for reference.
 
-## Generate the API documentation
+## Deployment
 
-To generate the API documentation locally, you will need to run the following command:
+To deploy the AWS Lambda function, follow these steps:
+
+1. **Create the deployment package**:
+   
+From the root directory, run the `package.ps1` script to create the deployment package. This script will create a ZIP file containing the code and dependencies.
+
+```powershell
+./scripts/package.ps1
+```
+
+2. **Deploy the package to AWS Lambda**:
+   
+From the root directory, run the `deploy.py` script to upload the deployment package to AWS Lambda. Ensure that your `config.ini` file contains the correct AWS credentials and settings.
 
 ```bash
-python docgen.py
+python -m scripts.deploy
+```
+
+This will update the Lambda function with the new code and dependencies.
+
+## Generate the API documentation
+
+To generate the API documentation locally, you will need to run the following command in the root directory of the project:
+
+```bash
+python -m scripts.docgen
 ```
 
 This will create a `swagger.yaml` OpenAPI Spec file in the root directory of the project, which describes the API and is compatible with Swagger UI.
