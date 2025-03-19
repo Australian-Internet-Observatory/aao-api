@@ -6,7 +6,7 @@ import hashlib
 import boto3
 import time
 import json
-import utils.metadata_repository as metadata
+import utils.metadata_sub_bucket as metadata
 
 from configparser import ConfigParser
 config = ConfigParser()

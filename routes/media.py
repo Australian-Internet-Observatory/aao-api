@@ -4,7 +4,7 @@ import json
 import dateutil.tz
 from middlewares.authenticate import authenticate
 from routes import route
-import utils.observations_repository as observations_repository
+import utils.observations_sub_bucket as observations_sub_bucket
 from utils import Response, use
 
 @route('medias', 'GET')
@@ -53,14 +53,14 @@ def get_media(event, response: Response):
                                 example: 'FILE_NOT_FOUND'
     """
     path = event['queryStringParameters']['path']
-    client = observations_repository.client
+    client = observations_sub_bucket.client
     
     try:
         # Get a presigned URL for the media file
         url = client.generate_presigned_url(
             ClientMethod='get_object',
             Params={
-                'Bucket': observations_repository.MOBILE_OBSERVATIONS_BUCKET,
+                'Bucket': observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
                 'Key': path
             },
         )

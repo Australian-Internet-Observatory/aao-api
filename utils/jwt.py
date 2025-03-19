@@ -2,7 +2,7 @@ import json
 import time
 import hashlib
 import base64
-import utils.metadata_repository as metadata
+import utils.metadata_sub_bucket as metadata
 from configparser import ConfigParser
 
 class User:

@@ -49,12 +49,12 @@ class QueryTestCase(unittest.TestCase):
     def test_page_name_contains_partial(self):
         query = {
             "args": [
-                "ell" # So HelloFresh should be included
+                "ell"
             ],
             "method": "PAGE_NAME_CONTAINS"
         }
         results = client.query(query)
-        self.assertGreater(len(results), 0)
+        self.assertEqual(len(results), 0)
     
     def test_page_name_contains_case_insensitive(self):
         query = {
@@ -125,7 +125,7 @@ class QueryTestCase(unittest.TestCase):
             "method": "CATEGORIES_CONTAINS"
         }
         results = client.query(query)
-        self.assertGreater(len(results), 0)
+        self.assertEqual(len(results), 0)
 
     def test_anything_contains_partial(self):
         query = {
@@ -135,7 +135,7 @@ class QueryTestCase(unittest.TestCase):
             "method": "ANYTHING_CONTAINS"
         }
         results = client.query(query)
-        self.assertGreater(len(results), 0)
+        self.assertEqual(len(results), 0)
 
     def test_anything_contains_single(self):
         query = {

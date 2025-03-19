@@ -5,7 +5,7 @@ import dateutil.tz
 from enricher import RdoBuilder
 from middlewares.authenticate import authenticate
 from routes import route
-import utils.observations_repository as observations_repository
+import utils.observations_sub_bucket as observations_sub_bucket
 from utils import use
 # from utils.query import AdQuery
 from utils.opensearch import AdQuery
@@ -72,7 +72,7 @@ def get_access_cache(event, response):
         })
     if observer_id.endswith('/'):
         observer_id = observer_id[:-1]
-    observer_data = observations_repository.read_json_file(f'{observer_id}/quick_access_cache.json')
+    observer_data = observations_sub_bucket.read_json_file(f'{observer_id}/quick_access_cache.json')
     if observer_data is None:
         return response.status(404).json({
             'success': False,
@@ -155,7 +155,7 @@ def get_stitching_frames_presigned(event, response):
     if not path.endswith('/'):
         path += '/'
     # List the frames at the path
-    frames = observations_repository.list_dir(path)
+    frames = observations_sub_bucket.list_dir(path)
     # print(s3.list_dir(f'{observer_id}/temp'))
     frame_paths = [f'{frame}' for frame in frames]
     
@@ -165,10 +165,10 @@ def get_stitching_frames_presigned(event, response):
     for frame_path in frame_paths:
         if not any([frame_path.endswith(ext) for ext in image_extensions]):
             continue
-        presigned_url = observations_repository.client.generate_presigned_url(
+        presigned_url = observations_sub_bucket.client.generate_presigned_url(
             ClientMethod='get_object',
             Params={
-                'Bucket': observations_repository.MOBILE_OBSERVATIONS_BUCKET,
+                'Bucket': observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
                 'Key': frame_path
             }
         )
@@ -254,7 +254,7 @@ def get_frames_presigned(event, response):
     if not path.endswith('/'):
         path += '/'
     # List the frames at the path
-    frames = observations_repository.list_dir(path)
+    frames = observations_sub_bucket.list_dir(path)
     print(path)
     # print(s3.list_dir(f'{observer_id}/temp'))
     frame_paths = [f'{frame}' for frame in frames]
@@ -265,10 +265,10 @@ def get_frames_presigned(event, response):
     for frame_path in frame_paths:
         if not any([frame_path.endswith(ext) for ext in image_extensions]):
             continue
-        presigned_url = observations_repository.client.generate_presigned_url(
+        presigned_url = observations_sub_bucket.client.generate_presigned_url(
             ClientMethod='get_object',
             Params={
-                'Bucket': observations_repository.MOBILE_OBSERVATIONS_BUCKET,
+                'Bucket': observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
                 'Key': frame_path
             }
         )
@@ -288,7 +288,7 @@ def try_compute_ads_stream_index():
     """
     # Check if the ads_stream.json file exists and is not older than 24 hours
     INDEX_FILENAME = 'ads_stream.json'
-    index_obj = observations_repository.try_get_object(key=INDEX_FILENAME)
+    index_obj = observations_sub_bucket.try_get_object(key=INDEX_FILENAME)
     if index_obj is not None:
         # Terminate if the file is not older than 24 hours
         last_modified = index_obj['LastModified']
@@ -296,11 +296,11 @@ def try_compute_ads_stream_index():
         cache_age = now - last_modified
         print(f'Found cache file. Cache age: {cache_age}')
         if cache_age < datetime.timedelta(days=1):
-            return observations_repository.read_json_file(INDEX_FILENAME)
+            return observations_sub_bucket.read_json_file(INDEX_FILENAME)
 
     # List all observers
     print('Cache expired or not found. Computing ads stream index...')
-    observers = observations_repository.list_dir()
+    observers = observations_sub_bucket.list_dir()
     
     ads_stream_index = {}
     # For each observer, 
@@ -309,7 +309,7 @@ def try_compute_ads_stream_index():
     for observer_id in observers:
         if observer_id.endswith('/'):
             observer_id = observer_id[:-1]
-        observer_data = observations_repository.read_json_file(f'{observer_id}/quick_access_cache.json')
+        observer_data = observations_sub_bucket.read_json_file(f'{observer_id}/quick_access_cache.json')
         if observer_data is None:
             continue
         keys = observer_data.keys()
@@ -343,8 +343,8 @@ def try_compute_ads_stream_index():
     
     print("Writing ads stream index to files...")
     # Save the ads stream index to the ads_stream.json file
-    observations_repository.client.put_object(
-        Bucket=observations_repository.MOBILE_OBSERVATIONS_BUCKET,
+    observations_sub_bucket.client.put_object(
+        Bucket=observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
         Key=INDEX_FILENAME,
         Body=json.dumps(ads_stream_index).encode('utf-8')
     )
@@ -390,10 +390,10 @@ def get_ads_stream_index(event, response):
     try:
         try_compute_ads_stream_index()
         INDEX_FILENAME = 'ads_stream.json'
-        presigned_url = observations_repository.client.generate_presigned_url(
+        presigned_url = observations_sub_bucket.client.generate_presigned_url(
             ClientMethod='get_object',
             Params={
-                'Bucket': observations_repository.MOBILE_OBSERVATIONS_BUCKET,
+                'Bucket': observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
                 'Key': INDEX_FILENAME
             }
         )
@@ -484,7 +484,7 @@ def get_ad_rdo(event, response):
                                 example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
     """
     observer_id, timestamp, ad_id = event['ad_params']
-    observer = observations_repository.Observer(observer_id)
+    observer = observations_sub_bucket.Observer(observer_id)
     return {
         'success': True,
         'data': observer.get_pre_constructed_rdo(timestamp, ad_id)
@@ -569,7 +569,7 @@ def get_ad_ocr_data(event, response):
                                 example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
     """
     observer_id, timestamp, ad_id = event['ad_params']
-    observer = observations_repository.Observer(observer_id)
+    observer = observations_sub_bucket.Observer(observer_id)
     rdo_builder = RdoBuilder(observer)
     ocr_data = rdo_builder.get_ocr_data(timestamp, ad_id)
     return {
@@ -661,7 +661,7 @@ def get_ad_raw_ocr_data(event, response):
                                 example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
     """
     observer_id, timestamp, ad_id = event['ad_params']
-    observer = observations_repository.Observer(observer_id)
+    observer = observations_sub_bucket.Observer(observer_id)
     rdo_builder = RdoBuilder(observer)
     ocr_data = rdo_builder.get_raw_ocr_data(timestamp, ad_id)
     return {
@@ -727,7 +727,7 @@ def get_ad_dimensions(event, response):
                                 example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
     """
     observer_id, timestamp, ad_id = event['ad_params']
-    observer = observations_repository.Observer(observer_id)
+    observer = observations_sub_bucket.Observer(observer_id)
     rdo_builder = RdoBuilder(observer)
     dimensions = rdo_builder.get_ad_dimensions(timestamp, ad_id)
     return {
@@ -797,7 +797,7 @@ def get_meta_candidates(event, response):
                                 example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
     """
     observer_id, timestamp, ad_id = event['ad_params']
-    observer = observations_repository.Observer(observer_id)
+    observer = observations_sub_bucket.Observer(observer_id)
     rdo_builder = RdoBuilder(observer)
     candidates = rdo_builder.get_candidates(timestamp, ad_id)
     media_paths = rdo_builder.get_downloaded_media(timestamp, ad_id)

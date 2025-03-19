@@ -1,7 +1,7 @@
 from configparser import ConfigParser
 from dataclasses import dataclass, field
 from opensearchpy import OpenSearch, RequestsHttpConnection
-from utils import observations_repository
+from utils import observations_sub_bucket
 from requests_aws4auth import AWS4Auth
 import boto3
 import botocore
@@ -44,7 +44,7 @@ class AdWithRDO:
         
     def fetch_rdo(self):
         if not hasattr(self, "rdo_content"):
-            self.rdo_content = observations_repository.read_json_file(self.rdo_path)
+            self.rdo_content = observations_sub_bucket.read_json_file(self.rdo_path)
         # Clean the content: enrichment.comparisons, media, observation.whitespace_derived_signature
         # Remove self["enrichment"]["comparisons"]
         del self.rdo_content["enrichment"]['meta_adlibrary_scrape']["comparisons"]

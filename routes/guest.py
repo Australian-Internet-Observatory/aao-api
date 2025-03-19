@@ -1,6 +1,6 @@
 from routes import route
 from utils import use
-import utils.metadata_repository as metadata
+import utils.metadata_sub_bucket as metadata
 from middlewares.authorise import authorise, Role
 from middlewares.authenticate import authenticate
 from utils.jwt import create_token

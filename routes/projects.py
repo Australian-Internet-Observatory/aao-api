@@ -6,7 +6,7 @@ from utils import use, jwt, Response
 import hashlib
 import boto3
 import json
-import utils.metadata_repository as metadata
+import utils.metadata_sub_bucket as metadata
 from models.project import Project, TeamMember, Cell
 
 from configparser import ConfigParser
@@ -68,9 +68,9 @@ def create_project(event, response, context):
             }],
         cells=[]
     )
-    metadata.put_object(f"{PROJECTS_FOLDER_PREFIX}/{project_id}.json", json.dumps(project.__dict__))
+    metadata.put_object(f"{PROJECTS_FOLDER_PREFIX}/{project_id}.json", json.dumps(project.model_dump()))
     response.status(201)
-    return project.__dict__
+    return project.model_dump()
 
 @route('/projects', 'GET')
 @use(authenticate)
@@ -162,8 +162,8 @@ def update_project(event, response, context):
     data = event['body']
     try:
         project = Project(**data)
-        metadata.update_object(f"{PROJECTS_FOLDER_PREFIX}/{project_id}.json", json.dumps(project.__dict__))
-        return project.__dict__
+        metadata.update_object(f"{PROJECTS_FOLDER_PREFIX}/{project_id}.json", json.dumps(project.model_dump()))
+        return project.model_dump()
     except:
         response.status(404).json({'message': 'Project not found'})
     # if project_id in get_all_projects():

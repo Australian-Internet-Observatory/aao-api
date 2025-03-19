@@ -1,4 +1,4 @@
-import utils.observations_repository as observations_repository
+import utils.observations_sub_bucket as observations_sub_bucket
 
 methods = {}
 
@@ -106,7 +106,7 @@ class AdQuery:
     def get_ads_index():
         ACCEPTED_TYPES = ['ads_passed_mass_download', 'ads_passed_rdo_construction']
         
-        index = observations_repository.read_json_file("ads_stream.json")
+        index = observations_sub_bucket.read_json_file("ads_stream.json")
         # Convert the index to a dict of sets for faster lookup
         return {key: set(value) for key, value in index.items() if key in ACCEPTED_TYPES}
 

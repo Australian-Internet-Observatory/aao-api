@@ -6,7 +6,7 @@ from utils import use, jwt
 import hashlib
 import boto3
 import json
-import utils.metadata_repository as metadata
+import utils.metadata_sub_bucket as metadata
 
 from configparser import ConfigParser
 config = ConfigParser()

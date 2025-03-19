@@ -1,7 +1,7 @@
 from middlewares.authenticate import authenticate
 from middlewares.authorise import Role, authorise
 from routes import route
-import utils.observations_repository as observations_repository
+import utils.observations_sub_bucket as observations_sub_bucket
 from utils import use
 
 @route('observers', 'GET')
@@ -37,5 +37,5 @@ def list_observers(event):
                             comment:
                                 type: string
     """
-    dirs = observations_repository.list_dir()
+    dirs = observations_sub_bucket.list_dir()
     return [path for path in dirs if path.endswith("/")]

@@ -1,5 +1,5 @@
 
-from utils.observations_repository import Observer
+from utils.observations_sub_bucket import Observer
 from dataclasses import dataclass
 
 @dataclass
