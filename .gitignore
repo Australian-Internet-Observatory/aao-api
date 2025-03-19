@@ -1,6 +1,6 @@
 # Project-specific files
 swagger.yaml
-tests.py
+local_tests.py
 temp
 lambda-deployment-package.zip
 

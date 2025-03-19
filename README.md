@@ -28,6 +28,14 @@ pip install -r requirements.txt
 
 Additionally, you will need to create a `config.ini` file in the root directory of the project to store the AWS credentials and other settings. An example `sample_config.ini` is provided for reference.
 
+## Testing
+
+To run the unit tests, you can use the following command:
+
+```bash
+python -m unittest
+```
+
 ## Deployment
 
 To deploy the AWS Lambda function, follow these steps:
@@ -37,6 +45,7 @@ To deploy the AWS Lambda function, follow these steps:
 ```shell
 ./scripts/package.sh
 python3 -m scripts.deploy
+python3 -m scripts.pulse
 ```
 
 **For Windows**
@@ -44,6 +53,7 @@ python3 -m scripts.deploy
 ```shell
 ./scripts/package.ps1
 python -m scripts.deploy
+python -m scripts.pulse
 ```
 
 1. **Create the deployment package**:
@@ -63,6 +73,14 @@ python -m scripts.deploy
 ```
 
 This will update the Lambda function with the new code and dependencies.
+
+3. **Test the deployment**:
+
+The `pulse.py` script can be used to test the deployment. This script will invoke the `/hello` endpoint of the API and print the response.
+
+```bash
+python -m scripts.pulse
+```
 
 ## Generate the API documentation
 

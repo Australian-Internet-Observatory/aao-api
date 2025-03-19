@@ -18,11 +18,9 @@ function_name = config['DEPLOYMENT']['LAMBDA_FUNCTION_NAME']
 
 def invoke_lambda():
     event = {
-        'path': 'hello',
-        'httpMethod': 'GET',
-        'headers': {
-            'Content-Type': 'application/json',
-        }
+        "path": "/hello",
+        "httpMethod": "GET",
+        "isBase64Encoded": True
     }
     response = lambda_client.invoke(
         FunctionName=function_name,
@@ -31,5 +29,6 @@ def invoke_lambda():
     )
     payload = json.loads(response['Payload'].read())
     print(json.dumps(payload, indent=2))
+    assert payload['statusCode'] == 200
     
 invoke_lambda()

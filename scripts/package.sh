@@ -15,17 +15,21 @@ echo "Copying the dependencies to the $TempDir directory"
 DependenciesPath=".venv/lib/python3.*/site-packages/*"
 rsync -av --progress $DependenciesPath $TempDir --exclude "__pycache__"
 
-# Zip the contents of the temporary directory (at root)
-echo "Zipping the contents of the $TempDir directory"
-# zip -r ./$ZipFileName ./$TempDir/*
-cd $TempDir
-zip -r ../$ZipFileName *
-cd ..
+# Install pydantic for x86_64 architecture
+echo "Installing pydantic for x86_64 architecture"
+pip install pydantic --platform manylinux2014_x86_64 --target=$TempDir --implementation cp --only-binary=:all: --upgrade --python-version 3.12
 
-# Test by unzipping the package
-unzip -l ./$ZipFileName
+# # Zip the contents of the temporary directory (at root)
+# echo "Zipping the contents of the $TempDir directory"
+# # zip -r ./$ZipFileName ./$TempDir/*
+# cd $TempDir
+# zip -r ../$ZipFileName *
+# cd ..
 
-# Delete the temporary directory
-rm -rf $TempDir
+# # Test by unzipping the package
+# unzip -l ./$ZipFileName
+
+# # Delete the temporary directory
+# rm -rf $TempDir
 
 echo "AWS Lambda deployment package created"

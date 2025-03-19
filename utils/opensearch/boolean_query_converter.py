@@ -21,7 +21,7 @@ def convert_to_opensearch_format(query):
     else:
         opensearch_query = convert_arg(query)
 
-    print(json.dumps(opensearch_query, indent=4))
+    # print(json.dumps(opensearch_query, indent=4))
 
     return opensearch_query
 
