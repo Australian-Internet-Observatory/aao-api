@@ -67,7 +67,7 @@ def categories_contains(arg):
     should_query = [
         {
             "query_string": {
-                "query": f'*"{category}"*', # Wrap in quotes to search for exact phrase
+                "query": f'"{category}"', # Wrap in quotes to search for exact phrase
                 "fields": ["enrichment.meta_adlibrary_scrape.candidates.data.categories"],
             }
         } for category in arg["args"]
@@ -84,7 +84,7 @@ def page_name_contains(arg):
     should_query = [
         {
             "query_string": {
-                "query": f'*"{page_name}"*', # Wrap in quotes to search for exact phrase
+                "query": f'"{page_name}"', # Wrap in quotes to search for exact phrase
                 "fields": ["enrichment.meta_adlibrary_scrape.candidates.data.page_name"],
             }
         } for page_name in arg["args"]
@@ -123,8 +123,8 @@ def full_text_contains(arg):
     ]
     should_query = [
         {
-            "query_string": {
-                "query": f'*"{text}"*', # Wrap in quotes to search for exact phrase
+            "simple_query_string": {
+                "query": f'"{text}"', # Wrap in quotes to search for exact phrase
                 "fields": fields,
             }
         } for text in arg["args"]]

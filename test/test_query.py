@@ -161,7 +161,7 @@ class QueryTestCase(unittest.TestCase):
     def test_anything_contains_long(self):
         query = {
             "args": [
-                "Join our website to search any suburb in the country with Australia",
+                "Step into a world of sophisticated",
             ],
             "method": "ANYTHING_CONTAINS"
         }

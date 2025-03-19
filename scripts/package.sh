@@ -19,17 +19,14 @@ rsync -av --progress $DependenciesPath $TempDir --exclude "__pycache__"
 echo "Installing pydantic for x86_64 architecture"
 pip install pydantic --platform manylinux2014_x86_64 --target=$TempDir --implementation cp --only-binary=:all: --upgrade --python-version 3.12
 
-# # Zip the contents of the temporary directory (at root)
-# echo "Zipping the contents of the $TempDir directory"
-# # zip -r ./$ZipFileName ./$TempDir/*
-# cd $TempDir
-# zip -r ../$ZipFileName *
-# cd ..
+# Zip the contents of the temporary directory (at root)
+echo "Zipping the contents of the $TempDir directory"
+# zip -r ./$ZipFileName ./$TempDir/*
+cd $TempDir
+zip -r ../$ZipFileName *
+cd ..
 
-# # Test by unzipping the package
-# unzip -l ./$ZipFileName
-
-# # Delete the temporary directory
-# rm -rf $TempDir
+# Delete the temporary directory
+rm -rf $TempDir
 
 echo "AWS Lambda deployment package created"
