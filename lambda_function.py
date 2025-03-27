@@ -140,9 +140,13 @@ def handle_s3_event(event, context):
 
 def lambda_handler(event, context):
     # If the event has records, it is an S3 event, so handle S3 event
-    if event.get("Records"): handle_s3_event(event, context)
+    if event.get("Records"):
+        print('Handling S3 event', event)
+        return handle_s3_event(event, context)
     # If the event has a path, it is an API Gateway event, so handle API call
-    if event.get("path"): handle_api_gateway_event(event, context)
+    if event.get("path"):
+        print('Handling API Gateway event', event) 
+        return handle_api_gateway_event(event, context)
 
 def invoke(event, verbose=False):
     result = lambda_handler({
