@@ -115,17 +115,20 @@ def handle_s3_event(event, context):
             raise Exception(f'This lambda function does not support bucket {bucket}')
         
         # If the key has the following format:
-        # <observer_id>/<timestamp>.<observation_id>/rdo/output.json
+        # <observer_id>/rdo/<timestamp>.<observation_id>/output.json
         # Then it is an RDO so request it to be indexed via the API
-        if key.endswith('/rdo/output.json'):
+        if key.endswith('/output.json'):
             print(f'Processing RDO object {key}')
             parts = key.split('/')
+            parts = [part for part in parts if part != ''] # Remove empty parts
+            if len(parts) != 4:
+                raise Exception(f'Invalid key format: {key}')
             observer_id = parts[0]
-            timestamp_observation_id = parts[1].split('.')
+            timestamp_observation_id = parts[2].split('.')
             timestamp = timestamp_observation_id[0]
             observation_id = timestamp_observation_id[1]
             return invoke({
-                "path": f'ads/{observer_id}/{timestamp}/{observation_id}/request_index',
+                "path": f'ads/{observer_id}/{timestamp}.{observation_id}/request_index',
                 "httpMethod": 'GET',
                 "headers": {
                     'Content-Type': 'application/json',

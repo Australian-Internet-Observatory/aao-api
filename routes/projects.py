@@ -23,9 +23,9 @@ session = boto3.Session(
 
 PROJECTS_FOLDER_PREFIX = 'projects'
 
-def get_project_member(project: Project, username):
-    for member in project.team:
-        if member.username == username:
+def get_project_member(project, username):
+    for member in project.get('team', []):
+        if member.get('username') == username:
             return member
     return None
 
@@ -39,12 +39,12 @@ def authorise_member(*roles: list[ProjectMemberRole]):
             if not project_data:
                 return response.status(404).json({'message': 'Project not found'})
             try:
-                project = Project.model_validate_json(json.loads(project_data))
-            except ValidationError:
-                return response.status(404).json({'message': 'Fail to retrieve project data'})
+                project = json.loads(project_data)
+            except Exception as e:
+                return response.status(404).json({'message': f'Failed to parse project: {e}'})
             
             member = get_project_member(project, event['user']['username'])
-            if not member or member.role not in [role.value for role in roles]:
+            if not member or member.get("role") not in [role.value for role in roles]:
                 return response.status(403).json({'message': 'You do not have permission to perform this action'})
             return func(event, response, context)
         return wrapper
@@ -130,8 +130,8 @@ def list_projects(event, response, context):
     return user_projects
 
 @route('/projects/{project_id}', 'GET')
-@authorise_member(ProjectMemberRole.ADMIN, ProjectMemberRole.EDITOR, ProjectMemberRole.VIEWER)
 @use(authenticate)
+@authorise_member(ProjectMemberRole.ADMIN, ProjectMemberRole.EDITOR, ProjectMemberRole.VIEWER)
 def get_project(event, response, context):
     """Get a project by ID.
     ---
@@ -162,8 +162,8 @@ def get_project(event, response, context):
         response.status(404).json({'message': 'Project not found'})
 
 @route('/projects/{project_id}', 'PUT')
-@authorise_member(ProjectMemberRole.ADMIN, ProjectMemberRole.EDITOR)
 @use(authenticate)
+@authorise_member(ProjectMemberRole.ADMIN, ProjectMemberRole.EDITOR)
 def update_project(event, response, context):
     """Update a project by ID.
     ---
