@@ -1,6 +1,31 @@
 
+from enum import Enum
 from typing import List, Union, Optional
 from pydantic import BaseModel
+
+class ProjectMemberRole(Enum):
+    ADMIN = 'admin'
+    VIEWER = 'viewer'
+    EDITOR = 'editor'
+    
+    def __repr__(self):
+        return self.value
+    
+    def __str__(self):
+        return self.value
+    
+    @staticmethod
+    def parse(role: str):
+        return ProjectMemberRole[role.upper()]
+    
+    @staticmethod
+    def equals(role: Union[str, 'ProjectMemberRole'], other: Union[str, 'ProjectMemberRole']):
+        # Convert to enum if string
+        if isinstance(role, str):
+            role = ProjectMemberRole.parse(role)
+        if isinstance(other, str):
+            other = ProjectMemberRole.parse(other)
+        return role == other
 
 class Query(BaseModel):
     method: str
@@ -42,4 +67,3 @@ class Project(BaseModel):
     ownerId: str
     team: List[TeamMember]
     cells: List[Cell]
-

@@ -1,6 +1,9 @@
+from dataclasses import dataclass
 import datetime
 import traceback
+import boto3
 import dateutil.tz
+import urllib
 from middlewares import parse_body
 from middlewares.authenticate import authenticate
 from routes import parse_path_parameters, route
@@ -53,10 +56,9 @@ def hello(event):
     user_id = event['pathParameters']['user_id']
     return {'message': f'Hello, {user_id}!'}
 
-def lambda_handler(event_raw, context):
+def handle_api_gateway_event(event_raw, context):
     try:
         event, response, context = parse_body(event_raw, context, None)
-        
         path = event['path']
         method = event['httpMethod']
         if not path.startswith('/'):
@@ -102,33 +104,63 @@ def lambda_handler(event_raw, context):
                 'error': str(e)
             })
         }
-    
+
+def handle_s3_event(event, context):
+    # Get the object from the event and show its content type
+    bucket = event['Records'][0]['s3']['bucket']['name']
+    key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding='utf-8')
+    try:
+        # Only allow bucket to be the observations bucket
+        if bucket != observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET:
+            raise Exception(f'This lambda function does not support bucket {bucket}')
+        
+        # If the key has the following format:
+        # <observer_id>/<timestamp>.<observation_id>/rdo/output.json
+        # Then it is an RDO so request it to be indexed via the API
+        if key.endswith('/rdo/output.json'):
+            print(f'Processing RDO object {key}')
+            parts = key.split('/')
+            observer_id = parts[0]
+            timestamp_observation_id = parts[1].split('.')
+            timestamp = timestamp_observation_id[0]
+            observation_id = timestamp_observation_id[1]
+            return invoke({
+                "path": f'ads/{observer_id}/{timestamp}/{observation_id}/request_index',
+                "httpMethod": 'GET',
+                "headers": {
+                    'Content-Type': 'application/json',
+                }
+            })
+        
+        return key
+    except Exception as e:
+        print(f'Error getting object {key} from bucket {bucket}')
+        print(e)
+        raise e
+
+def lambda_handler(event, context):
+    # If the event has records, it is an S3 event, so handle S3 event
+    if event.get("Records"): handle_s3_event(event, context)
+    # If the event has a path, it is an API Gateway event, so handle API call
+    if event.get("path"): handle_api_gateway_event(event, context)
+
+def invoke(event, verbose=False):
+    result = lambda_handler({
+        **event,
+        "headers": {
+            'Content-Type': 'application/json',
+            **(event.get('headers', {}))
+        }
+    }, {})
+    if verbose: print(json.dumps(result, indent=2))
+    return result
+
 if __name__ == "__main__":
-    # data = {
-    #     'action': 'list-observers',
-    #     'data': {
-    #         'session_token': 'e49c1d01-8ff3-4192-bce0-a1d15812e98c'
-    #     }
-    # }
-    # data = {
-    #     'action': 'get-access-cache',
-    #     'data': {
-    #         'session_token': 'e49c1d01-8ff3-4192-bce0-a1d15812e98c',
-    #         'observer': '5ea80108-154d-4a7f-8189-096c0641cd87'
-    #     }
-    # }
-    # event = {
-    #     'path': 'users',
-    #     'httpMethod': 'GET',
-    #     'headers': {
-    #         'Authorization': "Bearer eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJ1c2VybmFtZSI6ICJkYW50cmFuIiwgImZ1bGxfbmFtZSI6ICJEYW4gVHJhbiIsICJleHAiOiAxNzMyODU0MDEwLjIyMTk1NjN9.138f6b953c576512724f34af5c8fce443a2a5afc43570b6bedab355d81180677"
-    #     }
-    # }
-    print(routes)
-    
     event = {
-        'path': 'hello/test',
-        'httpMethod': 'GET'
+        "path": 'ads/153ccc28-f378-4274-98d3-0258574a03c5/1732759316233.5933a2d9-0e55-41b8-99a7-1a308a231956/request_index', 
+        "httpMethod": 'GET',
+        "headers": {
+            'Content-Type': 'application/json',
+        }
     }
-    context = {}
-    print(json.dumps(lambda_handler(event, context), indent=2))
+    invoke(event, verbose=True)

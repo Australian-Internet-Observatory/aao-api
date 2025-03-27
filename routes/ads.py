@@ -9,6 +9,7 @@ import utils.observations_sub_bucket as observations_sub_bucket
 from utils import use
 # from utils.query import AdQuery
 from utils.opensearch import AdQuery
+from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
 
 @route('ads/{observer_id}', 'GET') # get-access-cache?observer_id=5ea80108-154d-4a7f-8189-096c0641cd87
 @use(authenticate)
@@ -808,6 +809,67 @@ def get_meta_candidates(event, response):
         'media_paths': media_paths,
         'rankings': rankings
     }
+    
+@route('ads/{observer_id}/{timestamp}.{ad_id}/request_index', 'GET')
+@use(parse_ad_params)
+def request_index(event, response):
+    """Request that a specific ad be indexed for querying. This should be triggered automatically when an ad has been RDO-processed.
+    
+    This endpoint should not be called manually, but is triggered when the RDO construction is complete for the specified ad.
+    ---
+    tags:
+        - rdo
+    requestBody:
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        observer_id:
+                            type: string
+                        timestamp:
+                            type: string
+                        ad_id:
+                            type: string
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
+    """
+    observer_id, timestamp, ad_id = event['ad_params']
+    try:
+        ad_with_rdo = AdWithRDO(observer_id, timestamp, ad_id)
+        open_search = RdoOpenSearch()
+        data = ad_with_rdo.fetch_rdo()
+        open_search.put(ad_with_rdo, data)
+        return {
+            'success': True
+        }
+    except Exception as e:
+        return response.status(400).json({
+            'success': False,
+            'comment': f"Error indexing ad: {observer_id}/{timestamp}.{ad_id} - {str(e)}"
+        })
     
 @route('ads/query', 'POST')
 @use(authenticate)

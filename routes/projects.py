@@ -1,4 +1,6 @@
 from datetime import datetime
+
+from pydantic import ValidationError
 from routes import route
 from middlewares.authorise import Role, authorise
 from middlewares.authenticate import authenticate
@@ -7,7 +9,7 @@ import hashlib
 import boto3
 import json
 import utils.metadata_sub_bucket as metadata
-from models.project import Project, TeamMember, Cell
+from models.project import Project, ProjectMemberRole, TeamMember, Cell
 
 from configparser import ConfigParser
 config = ConfigParser()
@@ -20,6 +22,34 @@ session = boto3.Session(
 )
 
 PROJECTS_FOLDER_PREFIX = 'projects'
+
+def get_project_member(project: Project, username):
+    for member in project.team:
+        if member.username == username:
+            return member
+    return None
+
+# Must be used after authenticate middleware
+# Requires a project_id in the path parameters
+def authorise_member(*roles: list[ProjectMemberRole]):
+    def decorator(func):
+        def wrapper(event, response, context):
+            project_id = event['pathParameters']['project_id']
+            project_data = metadata.get_object(f"{PROJECTS_FOLDER_PREFIX}/{project_id}.json")
+            if not project_data:
+                return response.status(404).json({'message': 'Project not found'})
+            try:
+                project = Project.model_validate_json(json.loads(project_data))
+            except ValidationError:
+                return response.status(404).json({'message': 'Fail to retrieve project data'})
+            
+            member = get_project_member(project, event['user']['username'])
+            if not member or member.role not in [role.value for role in roles]:
+                return response.status(403).json({'message': 'You do not have permission to perform this action'})
+            return func(event, response, context)
+        return wrapper
+    return decorator
+
 
 def get_all_projects():
     projects = {}
@@ -92,13 +122,15 @@ def list_projects(event, response, context):
     user = event['user']
     user_projects = []
     for project_id in metadata.list_objects(PROJECTS_FOLDER_PREFIX):
-        project_data = metadata.get_object(f"{PROJECTS_FOLDER_PREFIX}/{project_id}")
+        print(project_id)
+        project_data = metadata.get_object(project_id)
         project = json.loads(project_data)
         if project['ownerId'] == user['username'] or user['role'] == 'admin' or any(member['username'] == user['username'] for member in project['team']):
             user_projects.append(project)
     return user_projects
 
 @route('/projects/{project_id}', 'GET')
+@authorise_member(ProjectMemberRole.ADMIN, ProjectMemberRole.EDITOR, ProjectMemberRole.VIEWER)
 @use(authenticate)
 def get_project(event, response, context):
     """Get a project by ID.
@@ -130,6 +162,7 @@ def get_project(event, response, context):
         response.status(404).json({'message': 'Project not found'})
 
 @route('/projects/{project_id}', 'PUT')
+@authorise_member(ProjectMemberRole.ADMIN, ProjectMemberRole.EDITOR)
 @use(authenticate)
 def update_project(event, response, context):
     """Update a project by ID.
@@ -175,6 +208,7 @@ def update_project(event, response, context):
 
 @route('/projects/{project_id}', 'DELETE')
 @use(authenticate)
+@authorise_member(ProjectMemberRole.ADMIN)
 def delete_project(event, response, context):
     """Delete a project by ID.
     ---
@@ -193,9 +227,10 @@ def delete_project(event, response, context):
         description: Project not found
     """
     project_id = event['pathParameters']['project_id']
-    
     try:
         metadata.delete_object(f"{PROJECTS_FOLDER_PREFIX}/{project_id}.json")
-        response.status(204)
+        return response.status(204).json({
+            'success': True
+        })
     except:
         response.status(404).json({'message': 'Project not found'})
