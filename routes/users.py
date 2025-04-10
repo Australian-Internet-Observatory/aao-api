@@ -22,7 +22,7 @@ USERS_FOLDER_PREFIX = 'dashboard-users'
 
 @route('users', 'GET')
 @use(authenticate)
-@use(authorise(Role.USER))
+@use(authorise(Role.USER, Role.ADMIN))
 # Event is not directly used here, but is needed for authenticate to work
 def list_users(event): 
     """Returns a list of users from the database (admin only)

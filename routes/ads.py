@@ -85,6 +85,14 @@ def get_access_cache(event, response):
         'data': observer_data
     }
 
+
+def get_stiched_frame_from_rdo(observer_id, timestamp, ad_id):
+    observer = observations_sub_bucket.Observer(observer_id)
+    rdo = observer.get_pre_constructed_rdo(timestamp, ad_id)
+    media: list[str] = rdo['media']
+    stiched_frames = [frame for frame in media if 'stitching' in frame]
+    return stiched_frames
+
 @route('ads/{observer_id}/{timestamp}.{ad_id}/stitching/frames', 'GET') # get-stiching-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
 @use(authenticate)
 def get_stitching_frames_presigned(event, response):
@@ -155,10 +163,11 @@ def get_stitching_frames_presigned(event, response):
     
     if not path.endswith('/'):
         path += '/'
-    # List the frames at the path
-    frames = observations_sub_bucket.list_dir(path)
-    # print(s3.list_dir(f'{observer_id}/temp'))
-    frame_paths = [f'{frame}' for frame in frames]
+    # # List the frames at the path
+    # frames = observations_sub_bucket.list_dir(path)
+    # # print(s3.list_dir(f'{observer_id}/temp'))
+    # frame_paths = [f'{frame}' for frame in frames]
+    frame_paths = get_stiched_frame_from_rdo(observer_id, timestamp, ad_id)
     
     # Generate presigned URLs for each frame
     presigned_urls = []
@@ -180,6 +189,7 @@ def get_stitching_frames_presigned(event, response):
         'frame_paths': frame_paths,
         'presigned_urls': presigned_urls
     }
+
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/frames', 'GET') # get-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
 @use(authenticate)
