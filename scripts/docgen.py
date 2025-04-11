@@ -118,7 +118,9 @@ def generate_routes_docs():
 def main():
     routes_docs = generate_routes_docs()
     api_docs = format_docstring(api_description)
+    print("Creating schemas...")
     schemas = create_openapi_schema(base_indent=2)
+    print("Schemas:\n", schemas)
     # print(api_docs + routes_docs)
     # Save the documentation to a file
     with open("swagger.yaml", "w") as f:

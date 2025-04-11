@@ -1,20 +1,55 @@
+from dataclasses import dataclass
 import datetime
+from enum import Enum
 import json
 
 import dateutil.tz
 from enricher import RdoBuilder
 from middlewares.authenticate import authenticate
+from models.ad import Ad
 from routes import route
+from routes.ad_attributes import AD_ATTRIBUTES_PREFIX
 import utils.observations_sub_bucket as observations_sub_bucket
 from utils import use
 # from utils.query import AdQuery
 from utils.opensearch import AdQuery
 from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
+import utils.metadata_sub_bucket as metadata
+
+class Enricher:
+    """Handles the enrichment of ads with metadata and other relevant information."""
+    def __init__(self, ad_path):
+        print(f"Enriching ad: {ad_path}")
+        [observer_id, _, rest] = ad_path.split('/')
+        self.observer_id = observer_id
+        parts = rest.split('.')
+        self.ad_id = parts[-1]
+        self.timestamp = ".".join(parts[:-1])
+        
+    def attach_attributes(self):
+        """Fetch the attributes metadata from """
+        ad_attributes_path = f'{AD_ATTRIBUTES_PREFIX}/{self.observer_id}_{self.timestamp}.{self.ad_id}.json'
+        try:
+            ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path).decode('utf-8'))
+            self.attributes = ad_attributes_data
+        except Exception as e:
+            print(f"Failed to fetch ad attributes at {ad_attributes_path}: {e}")
+            self.attributes = {}
+        return self
+    
+    def to_dict(self):
+        """Convert the enriched ad to a dictionary."""
+        return Ad(
+            observer_id=self.observer_id,
+            ad_id=self.ad_id,
+            timestamp=self.timestamp,
+            attributes=self.attributes if hasattr(self, 'attributes') else None
+        ).model_dump()
 
 @route('ads/{observer_id}', 'GET') # get-access-cache?observer_id=5ea80108-154d-4a7f-8189-096c0641cd87
 @use(authenticate)
 def get_access_cache(event, response):
-    """Retrieve the access cache for an observer.
+    """Retrieve the access cache for an observer and the ads that passed RDO construction.
 
     Retrieve the quick access cache for the specified observer.
     ---
@@ -38,6 +73,10 @@ def get_access_cache(event, response):
                                 type: boolean
                             data:
                                 type: object
+                            expanded:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/Ad'
         400:
             description: A failed response
             content:
@@ -80,9 +119,12 @@ def get_access_cache(event, response):
             'comment': 'NO_CACHE_FOUND_FOR_OBSERVER'
         })
     
+    ad_paths = observer_data.get('ads_passed_rdo_construction', [])
+    expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in ad_paths]
     return {
         'success': True,
-        'data': observer_data
+        'data': observer_data,
+        'expanded': expanded
     }
 
 
@@ -298,18 +340,18 @@ def try_compute_ads_stream_index():
     """Compute the ads stream index from the quick_access_cache.json file across
     all observers and save it to the ads_stream.json file in the root of the bucket.
     
-    Does not run if the ads_stream.json file already exists and not older than 24 hours.
+    Does not run if the ads_stream.json file already exists and not older than 1 hour.
     """
-    # Check if the ads_stream.json file exists and is not older than 24 hours
+    # Check if the ads_stream.json file exists and is not older than given cache age
     INDEX_FILENAME = 'ads_stream.json'
     index_obj = observations_sub_bucket.try_get_object(key=INDEX_FILENAME)
     if index_obj is not None:
-        # Terminate if the file is not older than 24 hours
+        # Terminate if the file is not older than given cache age
         last_modified = index_obj['LastModified']
         now = datetime.datetime.now(tz=dateutil.tz.tzutc())
         cache_age = now - last_modified
         print(f'Found cache file. Cache age: {cache_age}')
-        if cache_age < datetime.timedelta(hours=0):
+        if cache_age < datetime.timedelta(hours=1):
             return observations_sub_bucket.read_json_file(INDEX_FILENAME)
 
     # List all observers
@@ -367,7 +409,7 @@ def try_compute_ads_stream_index():
 @route('ads', 'GET')
 @use(authenticate)
 def get_ads_stream_index(event, response):
-    """Retrieve the ads stream index.
+    """Retrieve the ads stream index as a presigned URL and the ads that passed RDO construction.
 
     Retrieve the ads stream index from the S3 bucket, or recompute it if it is older than 24 hours.
     ---
@@ -385,6 +427,10 @@ def get_ads_stream_index(event, response):
                                 type: boolean
                             presigned_url:
                                 type: string
+                            expanded:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/Ad'
         500:
             description: A failed response
             content:
@@ -411,9 +457,20 @@ def get_ads_stream_index(event, response):
                 'Key': INDEX_FILENAME
             }
         )
+        index = observations_sub_bucket.read_json_file(INDEX_FILENAME)
+        if index is None:
+            return response.status(500).json({
+                'success': False,
+                'comment': 'FAILED_TO_GET_ADS_STREAM_INDEX',
+                'error': 'ads_stream.json not found'
+            })
+        
+        ads_passed_rdo_construction = index.get('ads_passed_rdo_construction', [])
+        expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in ads_passed_rdo_construction]
         return {
             'success': True,
-            'presigned_url': presigned_url
+            'presigned_url': presigned_url,
+            'expanded': expanded,
         }
     except Exception as e:
         return response.status(500).json({
@@ -887,7 +944,7 @@ def request_index(event, response):
 @route('ads/query', 'POST')
 @use(authenticate)
 def query(event, response):
-    """Query ads based on specified criteria.
+    """Query ads based on specified criteria and return the matching ad paths and the expanded ads.
 
     Perform a query on ads using the specified criteria and return the matching ad paths.
     ---
@@ -921,6 +978,10 @@ def query(event, response):
                                 type: array
                                 items:
                                     type: string
+                            expanded:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/Ad'
         400:
             description: A failed response
             content:
@@ -935,36 +996,14 @@ def query(event, response):
                                 type: string
                                 example: 'INVALID_QUERY'
     """
-    # Example query:
-    # {
-    #     "method": "OR",
-    #     "args": [
-    #     {
-    #         "method": "AND",
-    #         "args": [
-    #         {
-    #             "method": "MATCH",
-    #             "args": ["cats"]
-    #         },
-    #         {
-    #             "method": "MATCH",
-    #             "args": ["dogs"]
-    #         }
-    #         ]
-    #     },
-    #     {
-    #         "method": "MATCH",
-    #         "args": ["bird"]
-    #     }
-    #     ]
-    # }
     query_dict = event['body']
     ad_query = AdQuery()
     try:
         result = ad_query.query(query_dict) # List of ad paths that satisfy the query
         return {
             'success': True,
-            'result': result
+            'result': result,
+            'expanded': [Enricher(ad_path).attach_attributes().to_dict() for ad_path in result]
         }
     except Exception as e:
         return response.status(400).json({

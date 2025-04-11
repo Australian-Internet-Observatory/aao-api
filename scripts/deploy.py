@@ -18,6 +18,8 @@ function_name = config['DEPLOYMENT']['LAMBDA_FUNCTION_NAME']
 def deploy_lambda():
     with open(zip_file, 'rb') as f:
         zipped_code = f.read()
+        size = len(zipped_code)
+        print(f'Zip file size: {size / (1024 * 1024):.2f} MB')
     print(f'Updating {function_name} with {zip_file}')
     response = lambda_client.update_function_code(
         FunctionName=function_name,

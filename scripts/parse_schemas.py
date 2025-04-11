@@ -19,7 +19,9 @@ def create_openapi_schema(base_indent=0):
     # Get all the models defined in the models module, and is not a BaseModel
     models_members = inspect.getmembers(models, inspect.isclass)
     non_base_models = [model for name, model in models_members if not name == "BaseModel"]
-    yaml_schema = create_openapi_schema_for_models(non_base_models)
+    valid_models = [model for model in non_base_models if issubclass(model, models.BaseModel)]
+    print("Valid models:", valid_models)
+    yaml_schema = create_openapi_schema_for_models(valid_models)
     # Indent the yaml schema
     indented_schema = "\n".join([" " * base_indent + line for line in yaml_schema.split("\n")])
     return indented_schema
