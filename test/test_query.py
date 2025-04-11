@@ -167,5 +167,17 @@ class QueryTestCase(unittest.TestCase):
         }
         results = client.query(query)
         self.assertGreater(len(results), 0)
+        
+    def test_query_by_observer_id_v2(self):
+        query = {
+            "args": [
+                "87a"
+            ],
+            "method": "OBSERVER_ID_CONTAINS"
+        }
+        results = client.query(query)
+        print(results)
+        self.assertGreater(len(results), 0)
+        
 if __name__ == '__main__':
     unittest.main()

@@ -89,8 +89,11 @@ def get_access_cache(event, response):
 def get_stiched_frame_from_rdo(observer_id, timestamp, ad_id):
     observer = observations_sub_bucket.Observer(observer_id)
     rdo = observer.get_pre_constructed_rdo(timestamp, ad_id)
+    if rdo is None:
+        raise Exception(f"RDO not found for {observer_id}/{timestamp}.{ad_id}")
     media: list[str] = rdo['media']
-    stiched_frames = [frame for frame in media if 'stitching' in frame]
+    # temp-v2 is the new version of stitching
+    stiched_frames = [frame for frame in media if 'stitching' in frame or 'temp-v2' in frame]
     return stiched_frames
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/stitching/frames', 'GET') # get-stiching-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
@@ -306,7 +309,7 @@ def try_compute_ads_stream_index():
         now = datetime.datetime.now(tz=dateutil.tz.tzutc())
         cache_age = now - last_modified
         print(f'Found cache file. Cache age: {cache_age}')
-        if cache_age < datetime.timedelta(days=1):
+        if cache_age < datetime.timedelta(hours=0):
             return observations_sub_bucket.read_json_file(INDEX_FILENAME)
 
     # List all observers

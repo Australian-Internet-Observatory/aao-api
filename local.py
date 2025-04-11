@@ -56,7 +56,7 @@ def delete_s3_credentials():
 def main():
     migrate_credentials_from_dynamo_to_s3()
     # delete_s3_credentials()
-  
+
 if __name__ == "__main__":
     # main()
     pass

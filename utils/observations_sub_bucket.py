@@ -99,10 +99,14 @@ class Observer:
         return read_json_file(f"{prefix}/{filename}")
 
     def get_pre_constructed_rdo(self, timestamp, ad_id):
-        prefix = f"{self.observer_id}/rdo/{timestamp}.{ad_id}"
-        filename = "output.json"
-        return read_json_file(f"{prefix}/{filename}")
-
+        try:
+            prefix = f"{self.observer_id}/rdo/{timestamp}.{ad_id}"
+            filename = "output.json"
+            return read_json_file(f"{prefix}/{filename}")
+        except Exception as e:
+            prefix = f"{self.observer_id}/rdo/{ad_id}"
+            filename = "output.json"
+            return read_json_file(f"{prefix}/{filename}")
 # class Observation:
 #     def __init__(self, observer_id, timestamp, ad_id):
 #         self.observer_id = observer_id
