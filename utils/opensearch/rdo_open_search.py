@@ -1,5 +1,6 @@
 from configparser import ConfigParser
 from dataclasses import dataclass, field
+import json
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from utils import observations_sub_bucket
 from requests_aws4auth import AWS4Auth
@@ -40,7 +41,7 @@ class AdWithRDO:
     
     def __post_init__(self):
         self.rdo_path = f"{self.observer_id}/rdo/{self.timestamp}.{self.ad_id}/output.json"
-        self.open_search_id = f"{self.observer_id}.{self.timestamp}.{self.ad_id}"
+        self.open_search_id = f"{self.observer_id}.{self.ad_id}"
         
     def fetch_rdo(self):
         if not hasattr(self, "rdo_content"):
@@ -54,7 +55,8 @@ class AdWithRDO:
         del self.rdo_content["observation"]["whitespace_derived_signature"]
         return self.rdo_content
 
-RDO_INDEX = 'rdo-index'
+# RDO_INDEX = 'rdo-index'
+RDO_INDEX = 'ads-rdo-index'
 class RdoOpenSearch:
     def __init__(self):
         self.index = RDO_INDEX
@@ -84,12 +86,15 @@ if __name__ == "__main__":
     query = {
         "size": 10000,
         "query": {
-            "match_phrase": {
-                "enrichment.meta_adlibrary_scrape.candidates.data.categories": "POLITICAL"
+            "wildcard": {
+                "observation.uuid": "*47e7d7a6*"
             }
         }
     }
     results = rdo_search.search(query)
+    hit = results["hits"]["hits"][0]
+    print(get_hit_source_id(hit))
+    # print(json.dumps(hit['_source']['observation'], indent=4))
     hits = results["hits"]["hits"]
     took = results["took"]
     print(f"Query took {took}ms")
