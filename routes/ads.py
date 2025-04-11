@@ -19,8 +19,7 @@ import utils.metadata_sub_bucket as metadata
 class Enricher:
     """Handles the enrichment of ads with metadata and other relevant information."""
     def __init__(self, ad_path):
-        print(f"Enriching ad: {ad_path}")
-        [observer_id, _, rest] = ad_path.split('/')
+        [observer_id, _, rest] = [part for part in ad_path.split('/') if part]
         self.observer_id = observer_id
         parts = rest.split('.')
         self.ad_id = parts[-1]
@@ -33,7 +32,6 @@ class Enricher:
             ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path).decode('utf-8'))
             self.attributes = ad_attributes_data
         except Exception as e:
-            print(f"Failed to fetch ad attributes at {ad_attributes_path}: {e}")
             self.attributes = {}
         return self
     
@@ -73,10 +71,10 @@ def get_access_cache(event, response):
                                 type: boolean
                             data:
                                 type: object
-                            expanded:
+                            ads:
                                 type: array
                                 items:
-                                    $ref: '#/components/schemas/Ad'
+                                    type: string
         400:
             description: A failed response
             content:
@@ -119,12 +117,13 @@ def get_access_cache(event, response):
             'comment': 'NO_CACHE_FOUND_FOR_OBSERVER'
         })
     
-    ad_paths = observer_data.get('ads_passed_rdo_construction', [])
-    expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in ad_paths]
+    ads_passed_rdo_constructions = observer_data.get('ads_passed_rdo_construction', [])
+    # expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in ad_paths]
     return {
         'success': True,
         'data': observer_data,
-        'expanded': expanded
+        'ads': ads_passed_rdo_constructions,
+        # 'expanded': expanded
     }
 
 
@@ -427,10 +426,10 @@ def get_ads_stream_index(event, response):
                                 type: boolean
                             presigned_url:
                                 type: string
-                            expanded:
+                            ads:
                                 type: array
                                 items:
-                                    $ref: '#/components/schemas/Ad'
+                                    type: string
         500:
             description: A failed response
             content:
@@ -466,11 +465,10 @@ def get_ads_stream_index(event, response):
             })
         
         ads_passed_rdo_construction = index.get('ads_passed_rdo_construction', [])
-        expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in ads_passed_rdo_construction]
         return {
             'success': True,
             'presigned_url': presigned_url,
-            'expanded': expanded,
+            'ads': ads_passed_rdo_construction
         }
     except Exception as e:
         return response.status(500).json({
@@ -978,10 +976,6 @@ def query(event, response):
                                 type: array
                                 items:
                                     type: string
-                            expanded:
-                                type: array
-                                items:
-                                    $ref: '#/components/schemas/Ad'
         400:
             description: A failed response
             content:
@@ -998,12 +992,12 @@ def query(event, response):
     """
     query_dict = event['body']
     ad_query = AdQuery()
+    # expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in result]
     try:
         result = ad_query.query(query_dict) # List of ad paths that satisfy the query
         return {
             'success': True,
             'result': result,
-            'expanded': [Enricher(ad_path).attach_attributes().to_dict() for ad_path in result]
         }
     except Exception as e:
         return response.status(400).json({
