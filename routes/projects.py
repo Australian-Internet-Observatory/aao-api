@@ -125,7 +125,7 @@ def list_projects(event, response, context):
         print(project_id)
         project_data = metadata.get_object(project_id)
         project = json.loads(project_data)
-        if project['ownerId'] == user['username'] or user['role'] == 'admin' or any(member['username'] == user['username'] for member in project['team']):
+        if project['ownerId'] == user['username'] or user['role'] == 'admin' or any(member == user['username'] for member in project['team']):
             user_projects.append(project)
     return user_projects
 
