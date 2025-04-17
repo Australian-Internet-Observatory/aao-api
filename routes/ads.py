@@ -16,6 +16,8 @@ from utils.opensearch import AdQuery
 from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
 import utils.metadata_sub_bucket as metadata
 
+EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
+
 class Enricher:
     """Handles the enrichment of ads with metadata and other relevant information."""
     def __init__(self, ad_path):
@@ -24,25 +26,34 @@ class Enricher:
         parts = rest.split('.')
         self.ad_id = parts[-1]
         self.timestamp = ".".join(parts[:-1])
+        self.execution_time_ms = 0
         
     def attach_attributes(self):
         """Fetch the attributes metadata from """
         ad_attributes_path = f'{AD_ATTRIBUTES_PREFIX}/{self.observer_id}_{self.timestamp}.{self.ad_id}.json'
         try:
-            ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path).decode('utf-8'))
+            start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+            # Ignore the ad attributes if the file does not exist
+            ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path, include=EXISTING_ATTRIBUTE_OBJECTS).decode('utf-8'))
             self.attributes = ad_attributes_data
         except Exception as e:
             self.attributes = {}
+        end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+        self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
         return self
     
     def to_dict(self):
         """Convert the enriched ad to a dictionary."""
-        return Ad(
+        start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+        data = Ad(
             observer_id=self.observer_id,
             ad_id=self.ad_id,
             timestamp=self.timestamp,
             attributes=self.attributes if hasattr(self, 'attributes') else None
         ).model_dump()
+        end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+        self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
+        return data
 
 @route('ads/{observer_id}', 'GET') # get-access-cache?observer_id=5ea80108-154d-4a7f-8189-096c0641cd87
 @use(authenticate)
@@ -976,6 +987,10 @@ def query(event, response):
                                 type: array
                                 items:
                                     type: string
+                            expand:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/Ad'
         400:
             description: A failed response
             content:
@@ -992,12 +1007,13 @@ def query(event, response):
     """
     query_dict = event['body']
     ad_query = AdQuery()
-    # expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in result]
     try:
         result = ad_query.query(query_dict) # List of ad paths that satisfy the query
+        expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in result]
         return {
             'success': True,
             'result': result,
+            'expand': expanded 
         }
     except Exception as e:
         return response.status(400).json({

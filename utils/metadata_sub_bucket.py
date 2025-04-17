@@ -19,7 +19,9 @@ PREFIX = 'metadata'
 def put_object(key, data):
     return s3.put_object(Bucket=BUCKET, Key=f"{PREFIX}/{key}", Body=data)
 
-def get_object(key):
+def get_object(key, include = None):
+    if include is not None and key not in include:
+        raise ValueError(f"Key {key} not in include list")
     response = s3.get_object(Bucket=BUCKET, Key=f"{PREFIX}/{key}")
     return response['Body'].read()
 
