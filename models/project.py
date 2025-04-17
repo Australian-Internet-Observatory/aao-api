@@ -35,25 +35,24 @@ class TeamMember(BaseModel):
     username: str
     role: str
 
-class TextCell(BaseModel):
+class BaseCell(BaseModel):
+    config: Optional[dict] = None
+
+class TextCell(BaseCell):
     id: str
     type: str
     content: str
 
-class QueryResultConfig(BaseModel):
-    sort: str
-    groupBy: str
-
 class QueryResult(BaseModel):
     id: str
     type: str
-    config: Optional[QueryResultConfig] = None
+    config: Optional[dict] = None
 
 class QueryCellContent(BaseModel):
     query: Query
     results: List[QueryResult]
 
-class QueryCell(BaseModel):
+class QueryCell(BaseCell):
     id: str
     type: str
     content: QueryCellContent
