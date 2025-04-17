@@ -16,7 +16,10 @@ from utils.opensearch import AdQuery
 from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
 import utils.metadata_sub_bucket as metadata
 
-EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
+try:
+    EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
+except Exception as e:
+    EXISTING_ATTRIBUTE_OBJECTS = None
 
 class Enricher:
     """Handles the enrichment of ads with metadata and other relevant information."""
