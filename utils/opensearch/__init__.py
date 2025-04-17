@@ -11,6 +11,14 @@ class AdQuery:
                 "observation.uuid"
             ],
             "size": 10000,
+            "sort": [
+                # Sort by observation time descending
+                {
+                    "observation.observed_on_device_at": {
+                        "order": "desc"
+                    }
+                }
+            ],
             "query": parsed_query
         }
         # print(json.dumps(opensearch_query, indent=4))
