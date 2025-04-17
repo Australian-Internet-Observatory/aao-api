@@ -16,10 +16,10 @@ from utils.opensearch import AdQuery
 from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
 import utils.metadata_sub_bucket as metadata
 
-try:
-    EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
-except Exception as e:
-    EXISTING_ATTRIBUTE_OBJECTS = None
+# try:
+#     EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
+# except Exception as e:
+#     EXISTING_ATTRIBUTE_OBJECTS = None
 
 class Enricher:
     """Handles the enrichment of ads with metadata and other relevant information."""
@@ -31,13 +31,13 @@ class Enricher:
         self.timestamp = ".".join(parts[:-1])
         self.execution_time_ms = 0
         
-    def attach_attributes(self):
+    def attach_attributes(self, include=None):
         """Fetch the attributes metadata from """
         ad_attributes_path = f'{AD_ATTRIBUTES_PREFIX}/{self.observer_id}_{self.timestamp}.{self.ad_id}.json'
         try:
             start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
             # Ignore the ad attributes if the file does not exist
-            ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path, include=EXISTING_ATTRIBUTE_OBJECTS).decode('utf-8'))
+            ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path, include=include).decode('utf-8'))
             self.attributes = ad_attributes_data
         except Exception as e:
             self.attributes = {}
@@ -1011,8 +1011,10 @@ def query(event, response):
     query_dict = event['body']
     ad_query = AdQuery()
     try:
+        existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
         result = ad_query.query(query_dict) # List of ad paths that satisfy the query
-        expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in result]
+        print("Enriching ads...")
+        expanded = [Enricher(ad_path).attach_attributes(include=existing_attribute_paths).to_dict() for ad_path in result]
         return {
             'success': True,
             'result': result,

@@ -6,7 +6,7 @@ import dateutil.tz
 import urllib
 from middlewares import parse_body
 from middlewares.authenticate import authenticate
-from routes import parse_path_parameters, route
+from routes import parse_path_parameters, parse_query_parameters, route
 from utils import use
 import base64
 import json
@@ -66,12 +66,17 @@ def handle_api_gateway_event(event_raw, context):
         if path.endswith('/'):
             path = path[:-1]
         
+        path, query_params = parse_query_parameters(path)    
         route, path_params = parse_path_parameters(path)
         print(f'Route: {route}')
         print(f'Path params: {path_params}')
+        print(f'Query params: {query_params}')
         print(f'Method: {method}')
+        if query_params is not None and len(query_params) > 0:
+            event['queryStringParameters'] = query_params
         if path_params is not None and len(path_params) > 0:
             event['pathParameters'] = path_params
+        
         
         if route in routes and method in routes[route]:
             action = routes[route][method]

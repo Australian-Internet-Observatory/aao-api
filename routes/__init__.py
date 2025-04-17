@@ -122,6 +122,39 @@ def parse_path_parameters(path: str) -> tuple[str, dict]:
         return candidate, params
     raise KeyError(f'No route found for path: {path}')
 
+def parse_query_parameters(path: str) -> tuple[str, dict]:
+    """Parse the query parameters from a path.
+    
+    Example:
+    
+    Assuming a path with the query string '/users?user_id=123&name=John', the following code:
+    
+    ```python
+    path, params = parse_query_parameters('/users?user_id=123&name=John')
+    print(path, params)
+    ```
+    
+    Would output:
+    
+    ```python
+    '/users' {'user_id': '123', 'name': 'John'}
+    ```
+
+    Args:
+        path (str): The url path to parse.
+
+    Returns:
+        tuple[str, dict]: The path without the query string and the parsed query parameters.
+    """
+    if '?' in path:
+        path, query_string = path.split('?', 1)
+        params = {}
+        for param in query_string.split('&'):
+            key, value = param.split('=')
+            params[key] = value
+        return path, params
+    return path, {}
+
 # Declare all routes here - won't work without the imports
 from . import auth
 from . import users
