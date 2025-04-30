@@ -6,27 +6,43 @@ This also hosts the [documentation](https://admscentre.github.io/australian-ad-o
 
 ## Setup
 
-The purpose of this repository is to document the changes to the API, and to host the API documentation.
+1. Create a `config.ini` file in the root directory of the project to store the AWS credentials and other settings. An example `sample_config.ini` is provided for reference.
 
-For the code to run locally, you will need to set up a virtual environment and install the dependencies. You can do this by running the following commands:
+2. Use [AWS SAM CLI](https://github.com/aws/aws-sam-cli) to run the API locally.
 
-**For MacOS and Linux:**
+    2.1. Install AWS SAM CLI for your OS by following the [installation instructions](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html#install-sam-cli-instructions).
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+    2.2 Run the following command to build the API:
 
-**For Windows:**
+    ```bash
+    sam build
+    ```
 
-```bash
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-```
+    2.3 Run the following command to start the API locally:
 
-Additionally, you will need to create a `config.ini` file in the root directory of the project to store the AWS credentials and other settings. An example `sample_config.ini` is provided for reference.
+    ```bash
+    sam local start-api
+    ```
+
+    2.4 The API will be available at `http://localhost:3000/`.
+
+3. **Alternatively**, you can run the API locally using Python in a virtual environment.
+
+    3.1 For MacOS and Linux:
+
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    ```
+
+    3.2 For Windows:
+
+    ```powershell   
+    python -m venv .venv
+    .\.venv\Scripts\activate
+    pip install -r requirements.txt
+    ```
 
 ## Testing
 
