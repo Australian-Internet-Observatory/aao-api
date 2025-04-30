@@ -15,12 +15,13 @@ from utils import use
 from utils.opensearch import AdQuery
 from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
 import utils.metadata_sub_bucket as metadata
+from multiprocessing import Process, Pipe
 
 # try:
 #     EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
 # except Exception as e:
 #     EXISTING_ATTRIBUTE_OBJECTS = None
-
+        
 class Enricher:
     """Handles the enrichment of ads with metadata and other relevant information."""
     def __init__(self, ad_path):
@@ -37,6 +38,8 @@ class Enricher:
         try:
             start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
             # Ignore the ad attributes if the file does not exist
+            if include is not None and ad_attributes_path not in include:
+                raise ValueError(f"Key {ad_attributes_path} not in include list")
             ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path, include=include).decode('utf-8'))
             self.attributes = ad_attributes_data
         except Exception as e:
@@ -57,6 +60,77 @@ class Enricher:
         end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
         self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
         return data
+
+class BatchEnricher:
+    def __init__(self, ad_paths, parallel=False):
+        self.ad_paths = ad_paths
+        self.parallel = parallel
+        self.max_workers = 128 # Lambda have at most 1024 processes or threads
+        self.enrichers = [Enricher(ad_path) for ad_path in ad_paths]
+        self.execution_time_ms = 0
+    
+    def _attach_attributes_chunk(self, chunk, conn, include=None):
+        """Attach attributes to a chunk of ads in parallel."""
+        for enricher in chunk:
+            enricher.attach_attributes(include=include)
+            # Send the enriched object back to the parent process for collection
+            conn.send(enricher)
+        # Send a signal to indicate that the process is done
+        conn.send(None)
+    
+    def attach_attributes(self, include=None):
+        start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+        if self.parallel:
+            # Split the work into chunks equal to the number of workers
+            chunk_size = len(self.enrichers) // self.max_workers
+            chunks = [self.enrichers[i:i + chunk_size] for i in range(0, len(self.enrichers), chunk_size)]
+            processes = []
+            parent_connections = []
+            results = []
+            
+            # Prepare the processes and connections
+            for chunk in chunks:
+                parent_conn, child_conn = Pipe()
+                parent_connections.append(parent_conn)
+                process = Process(target=self._attach_attributes_chunk, args=(chunk, child_conn, include))
+                processes.append(process)
+            
+            # Start the processes
+            for process in processes:
+                process.start()
+                
+            # Collect the results from each process
+            for parent_conn in parent_connections:
+                while True:
+                    try:
+                        # Receive the result from the child process
+                        result = parent_conn.recv()
+                        # If the result is None, the process has finished (as defined in _attach_attributes_chunk)
+                        if result is None:
+                            break
+                        results.append(result)
+                    except EOFError:
+                        # If the connection is closed, break the loop
+                        break
+            # Wait for all processes to finish
+            for process in processes:
+                process.join()
+                
+            # Close the connections
+            for parent_conn in parent_connections:
+                parent_conn.close()
+                
+            # Update the enrichers with the results
+            self.enrichers = results
+        else:
+            for enricher in self.enrichers:
+                enricher.attach_attributes(include=include)
+        end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+        self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
+        return self
+        
+    def to_dict(self):
+        return [enricher.to_dict() for enricher in self.enrichers]
 
 @route('ads/{observer_id}', 'GET') # get-access-cache?observer_id=5ea80108-154d-4a7f-8189-096c0641cd87
 @use(authenticate)
@@ -1014,7 +1088,9 @@ def query(event, response):
         existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
         result = ad_query.query(query_dict) # List of ad paths that satisfy the query
         print("Enriching ads...")
-        expanded = [Enricher(ad_path).attach_attributes(include=existing_attribute_paths).to_dict() for ad_path in result]
+        batch_enricher = BatchEnricher(ad_paths=result, parallel=True)
+        expanded = batch_enricher.attach_attributes(include=existing_attribute_paths).to_dict()
+        print("Enriching ads complete, took", round(batch_enricher.execution_time_ms, 2), "ms")
         return {
             'success': True,
             'result': result,
