@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Local testing template for Australian Ad Observatory API
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 2048
+
+Resources:
+  AaoApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: . # Points to the current directory (where lambda_function.py is)
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Architectures: # Swap this to arm64 if you want to run on ARM locally but since the lambda is x86_64, we should keep it as that here
+        - x86_64
+      Events:
+        CatchAll:
+          Type: Api
+          Properties:
+            Path: /{proxy+} # Catch-all paths
+            Method: ANY
