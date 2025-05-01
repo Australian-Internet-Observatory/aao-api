@@ -73,7 +73,12 @@ This also hosts the [documentation](https://admscentre.github.io/australian-ad-o
     sudo sam local start-api
     ```
 
-    2.4 The API will be available at `http://localhost:3000/`.
+    2.4 The API will be available at `http://localhost:3000/`. To test it is working, try accessing the `/hello` endpoint:
+
+    ```shell
+    curl http://localhost:3000/hello
+    # {"message": "Hello, world!"}
+    ```
 
 3. **Alternatively**, you can run the API locally using Python in a virtual environment.
 
