@@ -4,6 +4,44 @@ This is the codebase for the Australian Ad Observatory API, which is a Mono-Lamb
 
 This also hosts the [documentation](https://admscentre.github.io/australian-ad-observatory-api) of the Australian Ad Observatory API.
 
+## Dependencies
+
+- Docker
+
+> [!TIP]
+>
+> For Linux, install Docker using the following command (preferably from `~`):
+>
+> Update the package database:
+>
+> ```bash
+> # Add Docker's official GPG key:
+> sudo apt-get update
+> sudo apt-get install ca-certificates curl
+> sudo install -m 0755 -d /etc/apt/keyrings
+> sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+> sudo chmod a+r /etc/apt/keyrings/docker.asc
+> 
+> # Add the repository to Apt sources:
+> echo \
+>   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+>   $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+>   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+> sudo apt-get update
+> ```
+>
+> Install the latest version of Docker:
+>
+> ```bash
+> sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+> ```
+>
+> Verify the installation:
+> 
+> ```bash
+> docker --version
+> ```
+
 ## Setup
 
 1. Create a `config.ini` file in the root directory of the project to store the AWS credentials and other settings. An example `sample_config.ini` is provided for reference.
@@ -12,16 +50,27 @@ This also hosts the [documentation](https://admscentre.github.io/australian-ad-o
 
     2.1. Install AWS SAM CLI for your OS by following the [installation instructions](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html#install-sam-cli-instructions).
 
+    > [!TIP] 
+    >
+    > For Linux, you can use the following command to install AWS SAM CLI (preferably from `~`):
+    >
+    > ```bash
+    > curl -L https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip -o aws-sam-cli-linux-x86_64.zip
+    > unzip aws-sam-cli-linux-x86_64.zip -d sam-installation
+    > sudo ./sam-installation/install
+    > sam --version
+    > ```
+
     2.2 Run the following command to build the API:
 
     ```bash
-    sam build
+    sudo sam build --use-container
     ```
 
     2.3 Run the following command to start the API locally:
 
     ```bash
-    sam local start-api
+    sudo sam local start-api
     ```
 
     2.4 The API will be available at `http://localhost:3000/`.
