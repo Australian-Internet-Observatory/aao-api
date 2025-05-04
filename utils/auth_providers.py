@@ -1,4 +1,3 @@
-import os
 import requests
 from authlib.integrations.requests_client import OAuth2Session
 from configparser import ConfigParser
@@ -10,7 +9,6 @@ CLIENT_ID = config['CILOGON']['CLIENT_ID']
 CLIENT_SECRET = config['CILOGON']['CLIENT_SECRET']
 METADATA_URL = config['CILOGON']['METADATA_URL']
 REDIRECT_URI = config['CILOGON']['REDIRECT_URI']
-
 
 def fetch_oidc_metadata(url):
     """Fetches the OIDC metadata as creating a client does not fetch it automatically"""
