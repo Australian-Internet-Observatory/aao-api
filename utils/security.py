@@ -1,4 +1,3 @@
-import os
 from itsdangerous import URLSafeTimedSerializer
 from configparser import ConfigParser
 
