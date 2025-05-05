@@ -80,6 +80,12 @@ This also hosts the [documentation](https://admscentre.github.io/australian-ad-o
     # {"message": "Hello, world!"}
     ```
 
+    2.5 To watch for changes in the source code and automatically rebuild the API, you can use the following command. You may first need to install `entr` using your package manager (e.g., `brew install entr` for MacOS or `sudo apt-get install entr` for Linux):
+
+    ```bash
+    find . -not -path "./.*" | entr -r sh -c 'sudo sam build --use-container && sudo sam local start-api'
+    ```
+
 3. **Alternatively**, you can run the API locally using Python in a virtual environment.
 
     3.1 For MacOS and Linux:
