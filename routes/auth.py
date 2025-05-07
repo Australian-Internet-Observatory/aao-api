@@ -9,6 +9,7 @@ config = ConfigParser()
 config.read("config.ini")
 
 FRONTEND_URL = config["APP"]["FRONTEND_URL"]
+REDIRECT_URI = config["CILOGON"]["REDIRECT_URI"]
 
 
 @route("auth/login", "POST")
@@ -402,30 +403,31 @@ def cilogon_authorize(event, response: Response):
             )
             return event, response, {}
 
-        # --- State is valid ---
+        # 5. Exchange code for access token (using OIDC token endpoint)
+        token_endpoint = cilogon_client.metadata.get("token_endpoint")
 
-        # 5. Get user info (using OIDC userinfo endpoint)
+        cilogon_client.fetch_token(
+            url=token_endpoint,
+            code=code,
+            redirect_uri=REDIRECT_URI,
+        )
+
+        # 6. Get user info (using OIDC userinfo endpoint)
         userinfo_endpoint = cilogon_client.metadata.get("userinfo_endpoint")
         userinfo = cilogon_client.get(userinfo_endpoint).json()
-        # print("CILogon UserInfo:", userinfo)
-        # --- You now have the authenticated user's details ---
-        # Example: userinfo might contain 'sub', 'email', 'name', etc.
 
-        # 6. TODO: Implement application logic:
-        #    - Find or create a user based on CILogon ID
+        # TODO: Check if user is 'deactivated' in CILogon (See POC for details)
 
         # 7. Create a JWT token for our application
         app_user_data = {
-            "username": userinfo.get(
-                "email", userinfo.get("sub")
-            ),  # TODO: Example mapping - need to explore
-            "full_name": userinfo.get("name", "CILogon User"),
-            "role": "user",
-            "enabled": True,
-            "cilogon_id": userinfo.get("sub"),
+            "username": userinfo.get("email"),
         }
 
-        app_token, _ = jwt.create_token(app_user_data)
+        app_token = jwt.create_token_after_external_auth(app_user_data)
+
+        if not app_token:
+            response.status(500).json({"success": False, "comment": "User not found"})
+            return event, response, {}
 
         # 8. Prepare final redirect response to the frontend
         #    Include app token in the redirect URL (e.g., fragment #token=...)
