@@ -283,7 +283,6 @@ def finalise_token_creation(username: str, user_data: dict) -> str | None:
     Disables old token, creates new token, saves session object.
     Returns the new token string or None on failure.
     """
-    # Disable the most recent *password or external* session token for the user
     most_recent_session_path = get_most_recent_session_path(username)
     if most_recent_session_path is not None:
         # Extract the token string from the path (assuming format {exp}_{token}.json)
