@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import datetime
 from enum import Enum
 import json
+import math
 
 import dateutil.tz
 from enricher import RdoBuilder
@@ -10,53 +11,187 @@ from models.ad import Ad
 from routes import route
 from routes.ad_attributes import AD_ATTRIBUTES_PREFIX
 import utils.observations_sub_bucket as observations_sub_bucket
-from utils import use
+from utils import Response, use
 # from utils.query import AdQuery
 from utils.opensearch import AdQuery
 from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
 import utils.metadata_sub_bucket as metadata
+from multiprocessing import Process, Pipe
 
 # try:
 #     EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
 # except Exception as e:
 #     EXISTING_ATTRIBUTE_OBJECTS = None
 
+def parse_ad_path(ad_path):
+    """Parse the ad path into its components: observer_id, timestamp, and ad_id."""
+    if ad_path is None:
+        raise ValueError("ad_path is None")
+    [observer_id, _, rest] = [part for part in ad_path.split('/') if part]
+    observer_id = observer_id
+    parts = rest.split('.')
+    if len(parts) < 2:
+        raise ValueError(f"Invalid ad path: {ad_path}")
+    ad_id = parts[-1]
+    timestamp = ".".join(parts[:-1])
+    return {
+        'observer_id': observer_id,
+        'timestamp': timestamp,
+        'ad_id': ad_id
+    }
+
 class Enricher:
     """Handles the enrichment of ads with metadata and other relevant information."""
-    def __init__(self, ad_path):
-        [observer_id, _, rest] = [part for part in ad_path.split('/') if part]
-        self.observer_id = observer_id
-        parts = rest.split('.')
-        self.ad_id = parts[-1]
-        self.timestamp = ".".join(parts[:-1])
-        self.execution_time_ms = 0
+    def __init__(self, ad=None):
+        if ad is not None:
+            self.observer_id = ad.get("observer_id", None)
+            self.timestamp = ad.get("timestamp", None)
+            self.ad_id = ad.get("ad_id", None)
         
+        if hasattr(self, 'observer_id') and self.observer_id is not None:
+            self.observer = observations_sub_bucket.Observer(self.observer_id)
+        else:
+            raise ValueError("observer_id is None")
+
+        self.execution_time_ms = 0
+    
+    def timeit(func):
+        """Decorator to time the execution of a function."""
+        def wrapper(self, *args, **kwargs):
+            start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+            result = func(self, *args, **kwargs)
+            end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+            self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
+            return result
+        return wrapper
+    
+    @timeit
     def attach_attributes(self, include=None):
         """Fetch the attributes metadata from """
         ad_attributes_path = f'{AD_ATTRIBUTES_PREFIX}/{self.observer_id}_{self.timestamp}.{self.ad_id}.json'
         try:
-            start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
             # Ignore the ad attributes if the file does not exist
+            if include is not None and ad_attributes_path not in include:
+                raise ValueError(f"Key {ad_attributes_path} not in include list")
             ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path, include=include).decode('utf-8'))
             self.attributes = ad_attributes_data
         except Exception as e:
             self.attributes = {}
-        end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
-        self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
+        return self
+    
+    @timeit
+    def attach_rdo(self):
+        # Get the RDO for the ad
+        rdo = self.observer.get_pre_constructed_rdo(self.timestamp, self.ad_id)
+        if rdo is not None:
+            self.rdo = rdo
+        else:
+            self.rdo = {}
         return self
     
     def to_dict(self):
         """Convert the enriched ad to a dictionary."""
         start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
-        data = Ad(
-            observer_id=self.observer_id,
-            ad_id=self.ad_id,
-            timestamp=self.timestamp,
-            attributes=self.attributes if hasattr(self, 'attributes') else None
-        ).model_dump()
+        data = {
+            "observer_id": self.observer_id,
+            "ad_id": self.ad_id,
+            "timestamp": self.timestamp,
+        }
+        if hasattr(self, 'attributes'):
+            data['attributes'] = self.attributes
+        if hasattr(self, 'rdo'):
+            data['rdo'] = self.rdo
         end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
         self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
         return data
+
+class BatchEnricher:
+    def __init__(self, ads:list[dict]=[], max_workers=128, parallel=False):
+        self.parallel = parallel
+        self.enrichers = [Enricher(ad) for ad in ads]
+        self.max_workers = min(max_workers, len(self.enrichers))
+        self.execution_time_ms = 0
+    
+    def _attach_attributes_chunk(self, chunk, conn, include=None):
+        """Attach attributes to a chunk of ads in parallel."""
+        for enricher in chunk:
+            enricher.attach_attributes(include=include)
+            # Send the enriched object back to the parent process for collection
+            conn.send(enricher)
+        # Send a signal to indicate that the process is done
+        conn.send(None)
+    
+    def _attach_chunk(self, target, chunk, conn, **kwargs):
+        """Attach attributes to a chunk of ads in parallel."""
+        for enricher in chunk:
+            target(enricher, **kwargs)
+            conn.send(enricher)
+        conn.send(None)
+    
+    def attach_enrichment(self, enricher_target, **kwargs):
+        chunk_target = lambda chunk, conn: self._attach_chunk(enricher_target, chunk, conn, **kwargs)
+        start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+        if self.parallel:
+            # Split the work into chunks equal to the number of workers
+            # with at least one enricher per worker
+            chunk_size = max(len(self.enrichers) // self.max_workers, 1)
+            chunks = [self.enrichers[i:i + chunk_size] for i in range(0, len(self.enrichers), chunk_size)]
+            processes = []
+            parent_connections = []
+            results = []
+            
+            # Prepare the processes and connections
+            for chunk in chunks:
+                parent_conn, child_conn = Pipe()
+                parent_connections.append(parent_conn)
+                process = Process(target=chunk_target, args=(chunk, child_conn))
+                processes.append(process)
+            
+            # Start the processes
+            for process in processes:
+                process.start()
+                
+            # Collect the results from each process
+            for parent_conn in parent_connections:
+                while True:
+                    try:
+                        # Receive the result from the child process
+                        result = parent_conn.recv()
+                        # If the result is None, the process has finished (as defined in _attach_attributes_chunk)
+                        if result is None:
+                            break
+                        results.append(result)
+                    except EOFError:
+                        # If the connection is closed, break the loop
+                        break
+            # Wait for all processes to finish
+            for process in processes:
+                process.join()
+                
+            # Close the connections
+            for parent_conn in parent_connections:
+                parent_conn.close()
+                
+            # Update the enrichers with the results
+            self.enrichers = results
+        else:
+            for enricher in self.enrichers:
+                enricher_target(enricher, **kwargs)
+        end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+        self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
+        return self
+        
+    def attach_attributes(self, include=None):
+        enricher_target = lambda enricher, include: enricher.attach_attributes(include=include)
+        # chunk_target = lambda chunk, conn: self._attach_chunk(enricher_target, chunk, conn, include=include)
+        return self.attach_enrichment(enricher_target, include=include)
+    
+    def attach_rdo(self):
+        enricher_target = lambda enricher: enricher.attach_rdo()
+        return self.attach_enrichment(enricher_target)
+        
+    def to_dict(self):
+        return [enricher.to_dict() for enricher in self.enrichers]
 
 @route('ads/{observer_id}', 'GET') # get-access-cache?observer_id=5ea80108-154d-4a7f-8189-096c0641cd87
 @use(authenticate)
@@ -150,6 +285,99 @@ def get_stiched_frame_from_rdo(observer_id, timestamp, ad_id):
     # temp-v2 is the new version of stitching
     stiched_frames = [frame for frame in media if 'stitching' in frame or 'temp-v2' in frame]
     return stiched_frames
+
+@route('ads/batch', 'POST')
+@use(authenticate)
+def get_batch_ads(event, response: Response):
+    """
+    Retrieve metadata associated with a batch of ads.
+    
+    Given a list of ads in the request body (with observer_id, timestamp and ad_id fields for each ad), as well as a list of metadata types to include, return the metadata for each ad in the list.
+    ---
+    tags:
+        - ads
+    requestBody:
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        ads:
+                            type: array
+                            items:
+                                type: object
+                                properties:
+                                    observer_id:
+                                        type: string
+                                    timestamp:
+                                        type: string
+                                    ad_id:
+                                        type: string
+                        metadata_types:
+                            type: array
+                            items:
+                                type: string
+                                enum: ['attributes', 'rdo']
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            ads:
+                                type: array
+                                items:
+                                    type: object
+                                    properties:
+                                        observer_id:
+                                            type: string
+                                        timestamp:
+                                            type: string
+                                        ad_id:
+                                            type: string
+                                        metadata:
+                                            type: object
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'Invalid request'
+    """
+    body = event['body']
+    ads = body.get('ads', [])
+    metadata_types = body.get('metadata_types', [])
+    if not ads or not metadata_types:
+        return response.status(400).json({
+            'success': False,
+            'comment': 'Invalid request, missing ads or metadata_types'
+        })
+    
+    batch_enricher = BatchEnricher(ads, parallel=True)
+    if 'attributes' in metadata_types:
+        batch_enricher.attach_attributes(include=metadata_types)
+    
+    if 'rdo' in metadata_types:
+        batch_enricher.attach_rdo()
+        
+    enriched_ads = batch_enricher.to_dict()
+    return {
+        'success': True,
+        'ads': enriched_ads
+    }
+    
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/stitching/frames', 'GET') # get-stiching-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
 @use(authenticate)
@@ -901,19 +1129,22 @@ def request_index(event, response):
     ---
     tags:
         - rdo
-    requestBody:
-        required: true
-        content:
-            application/json:
-                schema:
-                    type: object
-                    properties:
-                        observer_id:
-                            type: string
-                        timestamp:
-                            type: string
-                        ad_id:
-                            type: string
+    parameters:
+        - in: path
+          name: observer_id
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: timestamp
+          required: true
+          schema:
+              type: string
+        - in: path
+          name: ad_id
+          required: true
+          schema:
+              type: string
     responses:
         200:
             description: A successful response
@@ -1014,7 +1245,10 @@ def query(event, response):
         existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
         result = ad_query.query(query_dict) # List of ad paths that satisfy the query
         print("Enriching ads...")
-        expanded = [Enricher(ad_path).attach_attributes(include=existing_attribute_paths).to_dict() for ad_path in result]
+        ads = [parse_ad_path(ad_path) for ad_path in result]
+        batch_enricher = BatchEnricher(ads=ads, parallel=True)
+        expanded = batch_enricher.attach_attributes(include=existing_attribute_paths).to_dict()
+        print("Enriching ads complete, took", round(batch_enricher.execution_time_ms, 2), "ms")
         return {
             'success': True,
             'result': result,
