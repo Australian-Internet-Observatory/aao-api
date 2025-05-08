@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import datetime
 from enum import Enum
 import json
+import math
 
 import dateutil.tz
 from enricher import RdoBuilder
@@ -31,12 +32,23 @@ class Enricher:
         self.ad_id = parts[-1]
         self.timestamp = ".".join(parts[:-1])
         self.execution_time_ms = 0
-        
+        self.observer = observations_sub_bucket.Observer(observer_id)
+    
+    def timeit(func):
+        """Decorator to time the execution of a function."""
+        def wrapper(self, *args, **kwargs):
+            start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+            result = func(self, *args, **kwargs)
+            end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
+            self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
+            return result
+        return wrapper
+    
+    @timeit
     def attach_attributes(self, include=None):
         """Fetch the attributes metadata from """
         ad_attributes_path = f'{AD_ATTRIBUTES_PREFIX}/{self.observer_id}_{self.timestamp}.{self.ad_id}.json'
         try:
-            start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
             # Ignore the ad attributes if the file does not exist
             if include is not None and ad_attributes_path not in include:
                 raise ValueError(f"Key {ad_attributes_path} not in include list")
@@ -44,8 +56,16 @@ class Enricher:
             self.attributes = ad_attributes_data
         except Exception as e:
             self.attributes = {}
-        end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
-        self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
+        return self
+    
+    @timeit
+    def attach_rdo(self):
+        # Get the RDO for the ad
+        rdo = self.observer.get_pre_constructed_rdo(self.timestamp, self.ad_id)
+        if rdo is not None:
+            self.rdo = rdo
+        else:
+            self.rdo = {}
         return self
     
     def to_dict(self):
@@ -62,11 +82,11 @@ class Enricher:
         return data
 
 class BatchEnricher:
-    def __init__(self, ad_paths, parallel=False):
+    def __init__(self, ad_paths, max_workers=128, parallel=False):
         self.ad_paths = ad_paths
         self.parallel = parallel
-        self.max_workers = 128 # Lambda have at most 1024 processes or threads
         self.enrichers = [Enricher(ad_path) for ad_path in ad_paths]
+        self.max_workers = min(max_workers, len(self.enrichers))
         self.execution_time_ms = 0
     
     def _attach_attributes_chunk(self, chunk, conn, include=None):
@@ -78,11 +98,20 @@ class BatchEnricher:
         # Send a signal to indicate that the process is done
         conn.send(None)
     
-    def attach_attributes(self, include=None):
+    def _attach_chunk(self, target, chunk, conn, **kwargs):
+        """Attach attributes to a chunk of ads in parallel."""
+        for enricher in chunk:
+            target(enricher, **kwargs)
+            conn.send(enricher)
+        conn.send(None)
+    
+    def attach_enrichment(self, enricher_target, **kwargs):
+        chunk_target = lambda chunk, conn: self._attach_chunk(enricher_target, chunk, conn, **kwargs)
         start_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
         if self.parallel:
             # Split the work into chunks equal to the number of workers
-            chunk_size = len(self.enrichers) // self.max_workers
+            # with at least one enricher per worker
+            chunk_size = max(len(self.enrichers) // self.max_workers, 1)
             chunks = [self.enrichers[i:i + chunk_size] for i in range(0, len(self.enrichers), chunk_size)]
             processes = []
             parent_connections = []
@@ -92,7 +121,7 @@ class BatchEnricher:
             for chunk in chunks:
                 parent_conn, child_conn = Pipe()
                 parent_connections.append(parent_conn)
-                process = Process(target=self._attach_attributes_chunk, args=(chunk, child_conn, include))
+                process = Process(target=chunk_target, args=(chunk, child_conn))
                 processes.append(process)
             
             # Start the processes
@@ -124,10 +153,19 @@ class BatchEnricher:
             self.enrichers = results
         else:
             for enricher in self.enrichers:
-                enricher.attach_attributes(include=include)
+                enricher_target(enricher, **kwargs)
         end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
         self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
         return self
+        
+    def attach_attributes(self, include=None):
+        enricher_target = lambda enricher, include: enricher.attach_attributes(include=include)
+        # chunk_target = lambda chunk, conn: self._attach_chunk(enricher_target, chunk, conn, include=include)
+        return self.attach_enrichment(enricher_target, include=include)
+    
+    def attach_rdo(self):
+        enricher_target = lambda enricher: enricher.attach_rdo()
+        return self.attach_enrichment(enricher_target)
         
     def to_dict(self):
         return [enricher.to_dict() for enricher in self.enrichers]
