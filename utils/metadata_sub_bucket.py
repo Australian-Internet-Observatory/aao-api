@@ -19,6 +19,14 @@ PREFIX = 'metadata'
 def put_object(key, data):
     return s3.put_object(Bucket=BUCKET, Key=f"{PREFIX}/{key}", Body=data)
 
+def generate_presigned_url(key, expiration=3600):
+    response = s3.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': BUCKET, 'Key': f"{PREFIX}/{key}"},
+        ExpiresIn=expiration
+    )
+    return response
+
 def get_object(key, include = None):
     if include is not None and key not in include:
         raise ValueError(f"Key {key} not in include list")

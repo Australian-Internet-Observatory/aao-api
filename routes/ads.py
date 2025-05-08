@@ -96,11 +96,12 @@ class Enricher:
             "observer_id": self.observer_id,
             "ad_id": self.ad_id,
             "timestamp": self.timestamp,
+            "metadata": {}
         }
         if hasattr(self, 'attributes'):
-            data['attributes'] = self.attributes
+            data['metadata']['attributes'] = self.attributes
         if hasattr(self, 'rdo'):
-            data['rdo'] = self.rdo
+            data['metadata']['rdo'] = self.rdo
         end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
         self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
         return data
@@ -377,7 +378,105 @@ def get_batch_ads(event, response: Response):
         'success': True,
         'ads': enriched_ads
     }
+
+@route('ads/batch/presign', 'POST')
+@use(authenticate)
+def get_batch_ads_presign(event, response: Response):
+    """
+    Attach metadata to a batch of ads and return a presigned URL for the batch.
     
+    Behaves like the ads/batch endpoint, but returns a presigned URL for the batch instead of the metadata itself.
+    ---
+    tags:
+        - ads
+    requestBody:
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        ads:
+                            type: array
+                            items:
+                                type: object
+                                properties:
+                                    observer_id:
+                                        type: string
+                                    timestamp:
+                                        type: string
+                                    ad_id:
+                                        type: string
+                        metadata_types:
+                            type: array
+                            items:
+                                type: string
+                                enum: ['attributes', 'rdo']
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            presigned_url:
+                                type: string
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'Invalid request'
+    """
+    body = event['body']
+    ads = body.get('ads', [])
+    metadata_types = body.get('metadata_types', [])
+    if not ads or not metadata_types:
+        return response.status(400).json({
+            'success': False,
+            'comment': 'Invalid request, missing ads or metadata_types'
+        })
+    
+    batch_enricher = BatchEnricher(ads, parallel=True)
+    if 'attributes' in metadata_types:
+        batch_enricher.attach_attributes(include=metadata_types)
+    
+    if 'rdo' in metadata_types:
+        batch_enricher.attach_rdo()
+        
+    enriched_ads = batch_enricher.to_dict()
+    
+    # Save the enriched ads to a file and return a presigned URL
+    filename = f'batch_ads_{datetime.datetime.now(tz=dateutil.tz.tzutc()).strftime("%Y%m%d%H%M%S")}.json'
+    username = event.get('user', {}).get('username', None)
+    if username is None:
+        raise ValueError("user is None")
+    
+    path = f'batch_ads/{username}/{filename}'
+    metadata.put_object(
+        key=path,
+        data=json.dumps(enriched_ads).encode('utf-8')
+    )
+    
+    presigned_url = metadata.generate_presigned_url(
+        key=path,
+        expiration=3600
+    )
+    
+    return {
+        'success': True,
+        'presigned_url': presigned_url
+    }
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/stitching/frames', 'GET') # get-stiching-frames?path=5ea80108-154d-4a7f-8189-096c0641cd87/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250
 @use(authenticate)
@@ -1248,11 +1347,18 @@ def query(event, response):
         ads = [parse_ad_path(ad_path) for ad_path in result]
         batch_enricher = BatchEnricher(ads=ads, parallel=True)
         expanded = batch_enricher.attach_attributes(include=existing_attribute_paths).to_dict()
+        
+        def parse_expanded_ad(ad):
+            ad['attributes'] = ad.get('metadata', {}).get('attributes', {})
+            # Remove the metadata key
+            ad.pop('metadata', None)
+            return ad
+        
         print("Enriching ads complete, took", round(batch_enricher.execution_time_ms, 2), "ms")
         return {
             'success': True,
             'result': result,
-            'expand': expanded 
+            'expand': [parse_expanded_ad(ad) for ad in expanded] 
         }
     except Exception as e:
         return response.status(400).json({
