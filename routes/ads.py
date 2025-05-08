@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import datetime
 from enum import Enum
+import hashlib
 import json
 import math
 
@@ -182,10 +183,11 @@ class BatchEnricher:
         self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
         return self
         
-    def attach_attributes(self, include=None):
-        enricher_target = lambda enricher, include: enricher.attach_attributes(include=include)
+    def attach_attributes(self):
+        existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
+        enricher_target = lambda enricher: enricher.attach_attributes(include=existing_attribute_paths)
         # chunk_target = lambda chunk, conn: self._attach_chunk(enricher_target, chunk, conn, include=include)
-        return self.attach_enrichment(enricher_target, include=include)
+        return self.attach_enrichment(enricher_target)
     
     def attach_rdo(self):
         enricher_target = lambda enricher: enricher.attach_rdo()
@@ -368,7 +370,7 @@ def get_batch_ads(event, response: Response):
     
     batch_enricher = BatchEnricher(ads, parallel=True)
     if 'attributes' in metadata_types:
-        batch_enricher.attach_attributes(include=metadata_types)
+        batch_enricher.attach_attributes()
     
     if 'rdo' in metadata_types:
         batch_enricher.attach_rdo()
@@ -447,22 +449,56 @@ def get_batch_ads_presign(event, response: Response):
             'comment': 'Invalid request, missing ads or metadata_types'
         })
     
+    # Save the enriched ads to a file and return a presigned URL
+    username = event.get('user', {}).get('username', None)
+    if username is None:
+        raise ValueError("user is None")
+    
+    # Hash the body to create a unique key for the batch to allow for caching
+    key = hashlib.sha256(json.dumps({"ads": sorted(ads, key=lambda ad: ad.get('ad_id', None)), "types": sorted(metadata_types)}).encode('utf-8')).hexdigest()
+    filename = f'{key}.json'
+    path = f'batch_ads/{username}/{filename}'
+    
+    # Check if the batch already exists in the metadata bucket
+    use_cache = 'rdo' in metadata_types
+    if use_cache:
+        # If the batch already exists, return the presigned URL for the existing batch
+        # and skip the enrichment process
+        try:
+            existing_batch = metadata.get_object(path, read_body=False)
+            print(f"Found existing batch: {path}")
+        except Exception as e:
+            existing_batch = None
+            print(f"Batch not found: {path}")
+            
+        if existing_batch is not None:
+            # Only return the presigned URL if the batch is not older than 1 hour
+            last_modified = existing_batch['LastModified']
+            now = datetime.datetime.now(tz=dateutil.tz.tzutc())
+            cache_age = now - last_modified
+            if cache_age < datetime.timedelta(hours=1):
+                url = metadata.generate_presigned_url(
+                    key=path,
+                    expiration=3600,
+                    prefer_cache=True
+                )
+                return response.status(200).json({
+                    'success': True,
+                    'presigned_url': url,
+                })
+    
+    # Enrich then cache the batch
+    
     batch_enricher = BatchEnricher(ads, parallel=True)
     if 'attributes' in metadata_types:
-        batch_enricher.attach_attributes(include=metadata_types)
+        batch_enricher.attach_attributes()
     
     if 'rdo' in metadata_types:
         batch_enricher.attach_rdo()
         
     enriched_ads = batch_enricher.to_dict()
     
-    # Save the enriched ads to a file and return a presigned URL
-    filename = f'batch_ads_{datetime.datetime.now(tz=dateutil.tz.tzutc()).strftime("%Y%m%d%H%M%S")}.json'
-    username = event.get('user', {}).get('username', None)
-    if username is None:
-        raise ValueError("user is None")
     
-    path = f'batch_ads/{username}/{filename}'
     metadata.put_object(
         key=path,
         data=json.dumps(enriched_ads).encode('utf-8')
@@ -1341,24 +1377,25 @@ def query(event, response):
     query_dict = event['body']
     ad_query = AdQuery()
     try:
-        existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
+        # existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
         result = ad_query.query(query_dict) # List of ad paths that satisfy the query
-        print("Enriching ads...")
-        ads = [parse_ad_path(ad_path) for ad_path in result]
-        batch_enricher = BatchEnricher(ads=ads, parallel=True)
-        expanded = batch_enricher.attach_attributes(include=existing_attribute_paths).to_dict()
+        # print("Enriching ads...")
+        # ads = [parse_ad_path(ad_path) for ad_path in result]
+        # batch_enricher = BatchEnricher(ads=ads, parallel=True)
+        # expanded = batch_enricher.attach_attributes(include=existing_attribute_paths).to_dict()
         
-        def parse_expanded_ad(ad):
-            ad['attributes'] = ad.get('metadata', {}).get('attributes', {})
-            # Remove the metadata key
-            ad.pop('metadata', None)
-            return ad
+        # def parse_expanded_ad(ad):
+        #     ad['attributes'] = ad.get('metadata', {}).get('attributes', {})
+        #     # Remove the metadata key
+        #     ad.pop('metadata', None)
+        #     return ad
         
-        print("Enriching ads complete, took", round(batch_enricher.execution_time_ms, 2), "ms")
+        # print("Enriching ads complete, took", round(batch_enricher.execution_time_ms, 2), "ms")
         return {
             'success': True,
             'result': result,
-            'expand': [parse_expanded_ad(ad) for ad in expanded] 
+            'expand': [] # Keeping for legacy type support
+            # 'expand': [parse_expanded_ad(ad) for ad in expanded] 
         }
     except Exception as e:
         return response.status(400).json({
