@@ -1375,6 +1375,8 @@ def query(event, response):
                                 example: 'INVALID_QUERY'
     """
     query_dict = event['body']
+    print(f"User '{event['user']['username']}' requested ads with query:")
+    print(json.dumps(query_dict, indent=4))
     ad_query = AdQuery()
     try:
         # existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))

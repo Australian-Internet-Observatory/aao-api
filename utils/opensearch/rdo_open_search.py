@@ -46,13 +46,32 @@ class AdWithRDO:
     def fetch_rdo(self):
         if not hasattr(self, "rdo_content"):
             self.rdo_content = observations_sub_bucket.read_json_file(self.rdo_path)
-        # Clean the content: enrichment.comparisons, media, observation.whitespace_derived_signature
-        # Remove self["enrichment"]["comparisons"]
-        del self.rdo_content["enrichment"]['meta_adlibrary_scrape']["comparisons"]
-        # Remove self["media"]
-        del self.rdo_content["media"]
-        # Remove self["observation"]["whitespace_derived_signature"]
-        del self.rdo_content["observation"]["whitespace_derived_signature"]
+            
+        fields_to_remove = [
+            ['enrichment', 'meta_adlibrary_scrape', 'comparisons'],
+            ['enrichment', 'ccl'],
+            ['enrichment', 'media'],
+            ['media'],
+            ['observation', 'whitespace_derived_signature']
+        ]
+
+        for field in fields_to_remove:
+            try:
+                current_level = self.rdo_content
+                for key in field[:-1]:
+                    current_level = current_level.get(key, {})
+                del current_level[field[-1]]
+            except KeyError:
+                # If the key doesn't exist, we can ignore it
+                print(f"Key {field} not found in rdo_content")
+                pass
+            
+        # # Clean the content: enrichment.comparisons, media, observation.whitespace_derived_signature
+        # del self.rdo_content["enrichment"]['meta_adlibrary_scrape']["comparisons"]
+        # del self.rdo_content["enrichment"]['ccl']
+        # del self.rdo_content["enrichment"]['media']
+        # del self.rdo_content["media"]
+        # del self.rdo_content["observation"]["whitespace_derived_signature"]
         return self.rdo_content
 
 # RDO_INDEX = 'rdo-index'
@@ -63,7 +82,9 @@ class RdoOpenSearch:
         self.client = client
         
     def search(self, query):
-        return self.client.search(index=self.index, body=query)
+        return self.client.search(index=self.index, body=query, params={
+            "timeout": 300 # up to 5 minute / query instead of 10 seconds
+        })
     
     def get(self, id):
         return self.client.get(index=self.index, id=id)

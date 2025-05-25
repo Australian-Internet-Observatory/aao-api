@@ -7,6 +7,7 @@ import hashlib
 import boto3
 import json
 import utils.metadata_sub_bucket as metadata
+from urllib.parse import unquote
 
 from configparser import ConfigParser
 config = ConfigParser()
@@ -254,14 +255,18 @@ def edit_user(event, response):
                                 example: 'UNAUTHORISED'
     """
     caller = event['user']
+    
+    username = event['pathParameters']['username']
+    # Decode the URL-encoded username
+    username = unquote(username)
+    
     # Only editable by self, or admin
-    if caller['username'] != event['pathParameters']['username'] and Role.parse(caller['role']) != Role.ADMIN:
+    if caller['username'] != username and Role.parse(caller['role']) != Role.ADMIN:
         return response.status(403).json({
             "success": False,
             "comment": "UNAUTHORIZED"
         })
     
-    username = event['pathParameters']['username']
     user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
     try:
         old_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
@@ -421,13 +426,16 @@ def get_user(event, response):
     
     # Only admin or self can view
     caller = event['user']
-    if caller['username'] != event['pathParameters']['username'] and Role.parse(caller['role']) != Role.ADMIN:
+    username = event['pathParameters']['username']
+    # Decode the URL-encoded username
+    username = unquote(username)
+    
+    if caller['username'] != username and Role.parse(caller['role']) != Role.ADMIN:
         return response.status(403).json({
             "success": False,
             "comment": "UNAUTHORIZED"
         })
     
-    username = event['pathParameters']['username']
     user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
     try:
         user_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
@@ -495,6 +503,8 @@ def delete_user(event, response):
                                 example: 'UNAUTHORISED'
     """
     username = event['pathParameters']['username']
+    # Decode the URL-encoded username
+    username = unquote(username)
     user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
     try:
         metadata.delete_object(user_path)

@@ -53,4 +53,5 @@ def authenticate(event, response, context):
         })
         return event, response, context
     event['user'] = jwt.decode_token(session_token)
+    print(f"[Authentication] User successfully verified: {event['user']}")
     return event, response, context

@@ -4,7 +4,8 @@ from utils.opensearch.rdo_open_search import RdoOpenSearch, get_hit_source_id
 
 class AdQuery:
     def query(self, query_dict: dict):
-        PAGE_SIZE = 10000
+        # Limit the page size to avoid exceeding OpenSearch timeout
+        PAGE_SIZE = 1000
         MAX_RESULTS = 1_000_000
         max_retries = (MAX_RESULTS // PAGE_SIZE)
         
@@ -15,6 +16,7 @@ class AdQuery:
                 "observation.uuid"
             ],
             "size": PAGE_SIZE,
+            "track_total_hits": True,
             "sort": [
                 # Sort by observation time descending
                 {
@@ -25,10 +27,15 @@ class AdQuery:
             ],
             "query": parsed_query
         }
-        # print(json.dumps(opensearch_query, indent=4))
+        print("Parsed OpenSearch query:")
+        print(json.dumps(query, indent=4))
         rdo_search = RdoOpenSearch()
         results = rdo_search.search(query)
         hits = results["hits"]["hits"]
+        print(f"Initial query took {results['took']}ms")
+        if not hits or len(hits) == 0:
+            return []
+        
         last_hit = hits[-1]
 
         for i in range(max_retries):
@@ -37,6 +44,8 @@ class AdQuery:
                 "search_after": last_hit["sort"],
             }
             results = rdo_search.search(next_query)
+            print(f"Query took {results['took']}ms")
+            
             # If no more hits, break
             if not results["hits"]["hits"]:
                 break
