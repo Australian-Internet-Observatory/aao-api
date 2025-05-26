@@ -164,3 +164,4 @@ from . import ad_attributes
 from . import media
 from . import guest
 from . import projects
+from . import tags
