@@ -9,6 +9,15 @@ Globals:
     MemorySize: 2048
 
 Resources:
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'http://localhost:5173'"
+        MaxAge: "'600'"
   AaoApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -23,3 +32,5 @@ Resources:
           Properties:
             Path: /{proxy+} # Catch-all paths
             Method: ANY
+            RestApiId:
+              Ref: ApiGatewayApi

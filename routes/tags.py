@@ -88,7 +88,7 @@ def list_tags(event, response: Response, context):
                 $ref: '#/components/schemas/Tag'
     """
     tags = tags_repository.list()
-    return [tag.model_dump_json() for tag in tags]
+    return [tag.model_dump() for tag in tags]
 
 @route('/tags/{tag_id}', 'GET')
 @use(authenticate)
@@ -152,11 +152,26 @@ def update_tag(event, response: Response, context):
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Tag'
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: True
+                tag:
+                  $ref: '#/components/schemas/Tag'
       404:
         description: Tag not found
         content:
-            
+          application/json:
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: False
+                comment:
+                  type: string
+                  example: 'Tag not found'
     """
     tag_id = event['pathParameters']['tag_id']
     data = event['body']
@@ -168,7 +183,10 @@ def update_tag(event, response: Response, context):
     tag.description = data['description']
     tag.hex = data['hex']
     tags_repository.update(tag)
-    return tag.model_dump_json()
+    return response.status(200).json({
+        'success': True,
+        'tag': tag.model_dump()
+    })
 
 @route('/tags/{tag_id}', 'DELETE')
 @use(authenticate)
@@ -184,18 +202,36 @@ def delete_tag(event, response: Response, context):
         schema:
           type: string
     responses:
-      204:
+      200:
         description: Tag deleted successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: True
       404:
         description: Tag not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: False
+                comment:
+                  type: string
+                  example: 'Tag not found'
     """
     tag_id = event['pathParameters']['tag_id']
     tag = tags_repository.get(tag_id)
     if not tag:
-        response.status(404).json({'success': False, 'comment': 'Tag not found'})
-        return
+        return response.status(404).json({'success': False, 'comment': 'Tag not found'})
     tags_repository.delete(tag)
-    response.status(204)
+    return response.json({'success': True})
     
 @route('ads/{observer_id}/{timestamp}.{ad_id}/tags', 'GET')
 @use(authenticate)
@@ -252,13 +288,11 @@ def get_tags_for_ad(event, response: Response, context):
     observer_id = event['pathParameters']['observer_id']
     timestamp = event['pathParameters']['timestamp']
     ad_id = event['pathParameters']['ad_id']
-    ad_key = f"{observer_id}/{timestamp}.{ad_id}"
+    ad_key = f"{observer_id}_{timestamp}.{ad_id}"
 
     try:
-        tags = ads_tags_repository.get(ad_key)
-        if not tags:
-            return {'success': True, 'tag_ids': []}
-        return {'success': True, 'tag_ids': tags.get('tags', [])}
+        tags: AdTag = ads_tags_repository.get(ad_key, AdTag(id=ad_key, tags=[]))
+        return {'success': True, 'tag_ids': tags.tags}
     except Exception as e:
         response.status(400).json({'success': False, 'comment': 'ERROR_RETRIEVING_TAG_IDS'})
         return

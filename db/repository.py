@@ -53,10 +53,10 @@ class Repository():
         items = self._client.list()
         return [self._model.model_validate(item['value']) for item in items]
 
-    def get(self, item_id: int) -> BaseModel | None:
+    def get(self, item_id: int | str, default = None) -> BaseModel | None:
         """Retrieve an item by its ID."""
         data = self._client.get(str(item_id))
-        return self._model.model_validate(data) if data else None
+        return self._model.model_validate(data) if data else default
 
     def delete(self, item: BaseModel | dict | str) -> None:
         """Remove an item from the storage."""

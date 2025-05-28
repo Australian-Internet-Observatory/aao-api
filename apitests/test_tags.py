@@ -5,6 +5,7 @@ sys.path.append("../")
 from lambda_function import lambda_handler as local_handler
 from configparser import ConfigParser
 import pytest
+import requests
 
 config = ConfigParser()
 config.read('config.ini')
@@ -69,7 +70,7 @@ def test_create_and_delete_tag():
     assert 'tag' in body, "Response should contain 'tag' key"
     tag_id = body['tag']['id']
     delete_result = delete_tag(tag_id)
-    assert delete_result['statusCode'] == 204, f"Expected 204, got {delete_result['statusCode']}"
+    assert delete_result['statusCode'] == 200, f"Expected 200, got {delete_result['statusCode']}"
 
 def test_list_tags():
     tags = [
@@ -115,7 +116,7 @@ def test_list_tags():
     # Clean up created tags
     for tag in created_tags:
         delete_result = delete_tag(tag['id'])
-        assert delete_result['statusCode'] == 204, f"Expected 204, got {delete_result['statusCode']}"
+        assert delete_result['statusCode'] == 200, f"Expected 200, got {delete_result['statusCode']}"
 
 def test_update_tag():
     # Create a tag to update
@@ -167,7 +168,7 @@ def test_update_tag():
     
     # Clean up
     delete_result = delete_tag(tag_id)
-    assert delete_result['statusCode'] == 204, f"Expected 204, got {delete_result['statusCode']}"
+    assert delete_result['statusCode'] == 200, f"Expected 200, got {delete_result['statusCode']}"
 
 example_ad = {
     "observer_id": "9e194bee-46ac-4fd9-ac6e-a11b4dcfc18c",
@@ -229,7 +230,7 @@ def test_apply_tag():
 
     # Clean up
     delete_result = delete_tag(tag_id)
-    assert delete_result['statusCode'] == 204, f"Expected 204, got {delete_result['statusCode']}"
+    assert delete_result['statusCode'] == 200, f"Expected 200, got {delete_result['statusCode']}"
 
 def test_unapply_tag():
     # Create a tag to apply
@@ -280,4 +281,42 @@ def test_unapply_tag():
     
     # Clean up
     delete_result = delete_tag(tag_id)
-    assert delete_result['statusCode'] == 204, f"Expected 204, got {delete_result['statusCode']}"
+    assert delete_result['statusCode'] == 200, f"Expected 200, got {delete_result['statusCode']}"
+
+@pytest.mark.skip(reason="No assertions in this test")
+def test_get_tags_for_multiple_ads():
+    # Endpoint: ads/batch/presign
+    payload = {
+        "ads": [
+            {
+                "ad_id": "545ba836-81fe-4861-bc2e-6c8bfbe4e587",
+                "observer_id": "9e194bee-46ac-4fd9-ac6e-a11b4dcfc18c",
+                "timestamp": "1744851600298"
+            }
+        ],
+        "metadata_types": [
+            "attributes",
+            "tags"
+        ]
+    }
+    
+    token = get_login_token()
+    event = {
+        "path": "/ads/batch/presign",
+        "httpMethod": "POST",
+        "headers": {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        },
+        "body": json.dumps(payload)
+    }
+    result = local_handler(event, {})
+    # Get the presigned URL for the ads
+    presigned_url = json.loads(result['body'])['presigned_url']
+    print(f"Fetching from presigned URL: {presigned_url}")
+    response = requests.get(presigned_url)
+    content = response.json()
+    print(f"Response from presigned URL: {content}")
+
+if __name__ == "__main__":
+    test_get_tags_for_multiple_ads()
