@@ -289,6 +289,109 @@ def get_stiched_frame_from_rdo(observer_id, timestamp, ad_id):
     stiched_frames = [frame for frame in media if 'stitching' in frame or 'temp-v2' in frame]
     return stiched_frames
 
+
+@route('ads/{observer_id}/recent', 'GET')
+# Note: This purposely has no @use(authenticate) decorator, making it an open endpoint
+def get_observer_seen_ads_last_7_days(event, response: Response):
+    """
+    Retrieve a list of ads that passed RDO construction by a specific observer in the last 7 days.
+    This is an open endpoint "authenticated" by the observer_id in the path.
+    ---
+    tags:
+        - ads
+    parameters:
+        - in: path
+          name: observer_id
+          required: true
+          description: The full ID of the observer.
+          schema:
+              type: string
+    responses:
+        200:
+            description: A list of ad paths seen by the observer in the last 7 days.
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: True
+                            ads:
+                                type: array
+                                items:
+                                    type: string
+                                example: ["observer-id-123/temp/1678886400000.ad-id-abc", "observer-id-123/temp/1678972800000.ad-id-def"]
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'OBSERVER_NOT_PROVIDED_IN_PATH'
+        404:
+            description: No cache found for observer
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'NO_CACHE_FOUND_FOR_OBSERVER'
+    """
+    observer_id = event['pathParameters'].get('observer_id', None)
+
+    if not observer_id:
+        return response.status(400).json({
+            'success': False,
+            'comment': 'OBSERVER_ID_NOT_PROVIDED_IN_PATH'
+        })
+
+    cache_file_path = f'{observer_id}/quick_access_cache.json'
+    observer_data = observations_sub_bucket.read_json_file(cache_file_path)
+
+    if observer_data is None:
+        return response.status(404).json({
+            'success': False,
+            'comment': f'NO_CACHE_FOUND_FOR_OBSERVER: {observer_id}'
+        })
+
+    ads_from_cache = observer_data.get('ads_passed_rdo_construction', [])
+    recent_ads = []
+    now_utc = datetime.datetime.now(tz=dateutil.tz.tzutc())
+    seven_days_ago_utc = now_utc - datetime.timedelta(days=7)
+
+    for ad_path_str in ads_from_cache:
+        try:
+            parsed_ad_info = parse_ad_path(ad_path_str)
+            timestamp_str = parsed_ad_info['timestamp']
+
+            ad_timestamp_ms = int(float(timestamp_str))
+            ad_datetime_utc = datetime.datetime.fromtimestamp(ad_timestamp_ms / 1000.0, tz=dateutil.tz.tzutc())
+            
+            if ad_datetime_utc >= seven_days_ago_utc:
+                recent_ads.append(ad_path_str)
+        except ValueError as ve:
+            print(f"Warning: Skipping ad path '{ad_path_str}' for observer '{observer_id}'. Invalid format or timestamp: {ve}")
+        except Exception as e:
+            print(f"Warning: Error processing ad path '{ad_path_str}' for observer '{observer_id}': {e}")
+    
+    return {
+        'success': True,
+        'ads': recent_ads
+    }
+
+
 @route('ads/batch', 'POST')
 @use(authenticate)
 def get_batch_ads(event, response: Response):
