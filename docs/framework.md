@@ -42,7 +42,7 @@ Note that the docstring of the function is used to provide a summary and descrip
 
 This generates the following documentation for the `/hello` endpoint:
 
-![/hello endpoint documentation](images/doc-example.png)
+![/hello endpoint documentation](../images/doc-example.png)
 
 > [!NOTE]
 >

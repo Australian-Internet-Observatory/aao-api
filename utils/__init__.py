@@ -8,7 +8,7 @@ class Response:
         self.terminated = False
         self.logs = []
         
-    def status(self, code):
+    def status(self, code: int):
         self.body = {
             'statusCode': code
         }

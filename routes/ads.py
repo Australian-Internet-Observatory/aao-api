@@ -6,9 +6,12 @@ import json
 import math
 
 import dateutil.tz
+from db.clients.s3_storage_client import S3StorageClient
+from db.repository import Repository
 from enricher import RdoBuilder
 from middlewares.authenticate import authenticate
 from models.ad import Ad
+from models.ad_tag import AdTag
 from routes import route
 from routes.ad_attributes import AD_ATTRIBUTES_PREFIX
 import utils.observations_sub_bucket as observations_sub_bucket
@@ -17,7 +20,8 @@ from utils import Response, use
 from utils.opensearch import AdQuery
 from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
 import utils.metadata_sub_bucket as metadata
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe 
+from .tags import ads_tags_repository
 
 # try:
 #     EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
@@ -80,6 +84,21 @@ class Enricher:
             self.attributes = {}
         return self
     
+    def attach_tags(self, include=None):
+        """Attach tags to the ad."""
+        # Fetch the tags for the ad
+        try:
+            ad_key = f"{self.observer_id}_{self.timestamp}.{self.ad_id}"
+            if include is not None and ad_key not in include:
+                raise ValueError(f"Key {ad_key} not in include list")
+            tags = ads_tags_repository.get(ad_key, AdTag(id=ad_key, tags=[]))
+            print(f"Tags for {ad_key}: {tags}")
+            self.tags = tags.tags
+        except Exception as e:
+            print(f"Error fetching tags for {self.observer_id}/{self.timestamp}.{self.ad_id}: {e}")
+            self.tags = []
+        return self
+    
     @timeit
     def attach_rdo(self):
         # Get the RDO for the ad
@@ -101,6 +120,8 @@ class Enricher:
         }
         if hasattr(self, 'attributes'):
             data['metadata']['attributes'] = self.attributes
+        if hasattr(self, 'tags'):
+            data['metadata']['tags'] = self.tags
         if hasattr(self, 'rdo'):
             data['metadata']['rdo'] = self.rdo
         end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
@@ -113,15 +134,6 @@ class BatchEnricher:
         self.enrichers = [Enricher(ad) for ad in ads]
         self.max_workers = min(max_workers, len(self.enrichers))
         self.execution_time_ms = 0
-    
-    def _attach_attributes_chunk(self, chunk, conn, include=None):
-        """Attach attributes to a chunk of ads in parallel."""
-        for enricher in chunk:
-            enricher.attach_attributes(include=include)
-            # Send the enriched object back to the parent process for collection
-            conn.send(enricher)
-        # Send a signal to indicate that the process is done
-        conn.send(None)
     
     def _attach_chunk(self, target, chunk, conn, **kwargs):
         """Attach attributes to a chunk of ads in parallel."""
@@ -187,6 +199,13 @@ class BatchEnricher:
         existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
         enricher_target = lambda enricher: enricher.attach_attributes(include=existing_attribute_paths)
         # chunk_target = lambda chunk, conn: self._attach_chunk(enricher_target, chunk, conn, include=include)
+        return self.attach_enrichment(enricher_target)
+    
+    def attach_tags(self):
+        existing_tags = ads_tags_repository.list()
+        existing_tags = [f"{tag.id}" for tag in existing_tags]
+        print(f"Existing tags: {existing_tags}")
+        enricher_target = lambda enricher: enricher.attach_tags(include=existing_tags)
         return self.attach_enrichment(enricher_target)
     
     def attach_rdo(self):
@@ -424,7 +443,7 @@ def get_batch_ads(event, response: Response):
                             type: array
                             items:
                                 type: string
-                                enum: ['attributes', 'rdo']
+                                enum: ['attributes', 'tags', 'rdo']
     responses:
         200:
             description: A successful response
@@ -475,6 +494,9 @@ def get_batch_ads(event, response: Response):
     if 'attributes' in metadata_types:
         batch_enricher.attach_attributes()
     
+    if 'tags' in metadata_types:
+        batch_enricher.attach_tags()
+    
     if 'rdo' in metadata_types:
         batch_enricher.attach_rdo()
         
@@ -516,7 +538,7 @@ def get_batch_ads_presign(event, response: Response):
                             type: array
                             items:
                                 type: string
-                                enum: ['attributes', 'rdo']
+                                enum: ['attributes', 'tags', 'rdo']
     responses:
         200:
             description: A successful response
@@ -596,11 +618,13 @@ def get_batch_ads_presign(event, response: Response):
     if 'attributes' in metadata_types:
         batch_enricher.attach_attributes()
     
+    if 'tags' in metadata_types:
+        batch_enricher.attach_tags()
+    
     if 'rdo' in metadata_types:
         batch_enricher.attach_rdo()
         
     enriched_ads = batch_enricher.to_dict()
-    
     
     metadata.put_object(
         key=path,
@@ -1478,6 +1502,8 @@ def query(event, response):
                                 example: 'INVALID_QUERY'
     """
     query_dict = event['body']
+    print(f"User '{event['user']['username']}' requested ads with query:")
+    print(json.dumps(query_dict, indent=4))
     ad_query = AdQuery()
     try:
         # existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))

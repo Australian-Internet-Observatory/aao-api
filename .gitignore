@@ -4,6 +4,7 @@ local_tests.py
 temp
 lambda-deployment-package.zip
 .aws-sam/
+.pytest_cache/
 
 # Config - SECRET DO NOT SHARE!!!
 config.ini

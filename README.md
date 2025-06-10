@@ -106,10 +106,67 @@ This also hosts the [documentation](https://admscentre.github.io/australian-ad-o
 
 ## Testing
 
-To run the unit tests, you can use the following command:
+They can be run using the [`pytest`](https://docs.pytest.org/en/stable/) module, which you can install with:
 
 ```bash
-python -m unittest
+pip install pytest
+```
+
+> [!NOTE]
+>
+> This dependency is not included in the `requirements.txt` file as it is only needed for testing purposes and not for the Lambda deployment.
+
+To run the tests, you can use the following command from the root directory of the project:
+
+```bash
+python -m pytest test_directory_or_file
+```
+
+Where `test_directory_or_file` can be either a specific test file (e.g., `unittests/test_file.py`) or a directory containing tests (e.g., `unittests` or `apitests`).
+
+> [!IMPORTANT]
+>
+> We are using the `python -m` command to run `pytest` instead of `pytest` directly to ensure that the correct Python interpreter is used, especially when working with virtual environments.
+>
+> Without this, you may encounter issues with the Python version or when importing modules such as `lambda_function`.
+
+### Unit Tests
+
+These tests target the individual components of the API (and not the endpoints). They are located in the `unittests` directory.
+
+To run a specific test file:
+
+```bash
+python -m pytest unittests/test_file.py
+```
+
+To run all unit tests:
+
+```bash
+python -m pytest unittests
+```
+
+### API Tests
+
+These tests target the API endpoints and are located in the `apitests` directory.
+
+> [!IMPORTANT]
+>
+> The API tests are integration tests that target many protected endpoints and
+> will require valid authentication credentials to run successfully. you will 
+> need to set up the `config.ini` file with a valid `USERNAME` and `PASSWORD` 
+> of actual accounts to run these tests successfully.
+
+To run a specific test file:
+
+```bash
+python -m pytest apitests/test_file.py
+```
+
+To run all API tests:
+
+```bash
+python -m pytest apitests
 ```
 
 ## Deployment
