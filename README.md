@@ -150,6 +150,13 @@ python -m pytest unittests
 
 These tests target the API endpoints and are located in the `apitests` directory.
 
+> [!IMPORTANT]
+>
+> The API tests are integration tests that target many protected endpoints and
+> will require valid authentication credentials to run successfully. you will 
+> need to set up the `config.ini` file with a valid `USERNAME` and `PASSWORD` 
+> of actual accounts to run these tests successfully.
+
 To run a specific test file:
 
 ```bash
