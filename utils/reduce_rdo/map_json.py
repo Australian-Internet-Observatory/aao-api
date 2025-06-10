@@ -1,6 +1,6 @@
-import flatten_json
+from . import flatten_json
+from . import map_json_transform
 import re
-import map_json_transform
 
 def create_regex_from_path(path):
     """Create a regex pattern from a given path string.

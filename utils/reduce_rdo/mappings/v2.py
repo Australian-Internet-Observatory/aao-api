@@ -14,6 +14,17 @@ mapping = [
         "to": "observer.*",
         "transform": "NULL_STRING_TO_NONE"
     },
+    # These fields need to be transformed to strings for the index to work properly
+    {
+        "from": "observer.demographic_characteristics.study_related.online_frauds_or_scams.been_victim_of_online_fraud_or_scams",
+        "to": "observer.demographic_characteristics.study_related.online_frauds_or_scams.been_victim_of_online_fraud_or_scams",
+        "transform": "TO_STRING"
+    },
+    {
+        "from": "observer.demographic_characteristics.study_related.relationships_and_fertility.pregnancies_that_resulted_in_live_birth_specified",
+        "to": "observer.demographic_characteristics.study_related.relationships_and_fertility.pregnancies_that_resulted_in_live_birth_specified",
+        "transform": "TO_STRING"
+    },
     # Other fields
     {
         "from": "observation.observed_on_device_at",

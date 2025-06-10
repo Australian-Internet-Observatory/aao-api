@@ -55,11 +55,24 @@ def null_string_to_none(value):
     Transform a string value to None if it is 'NULL'.
     
     Args:
-        value (str): The value to transform.
+        value(str): The value to transform.
     
     Returns:
-        str or None: The transformed value.
+        out(str or None): The transformed value.
     """
     if isinstance(value, str) and value == "NULL":
         return None
     return value
+
+@register("TO_STRING")
+def to_string(value):
+    """
+    Convert a value to its string representation if it is not None.
+    
+    Args:
+        value(str): The value to convert.
+    
+    Returns:
+        out(str or None): The string representation of the value, or None if the value is None.
+    """
+    return str(value) if value is not None else None

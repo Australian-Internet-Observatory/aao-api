@@ -18,7 +18,7 @@ import utils.observations_sub_bucket as observations_sub_bucket
 from utils import Response, use
 # from utils.query import AdQuery
 from utils.opensearch import AdQuery
-from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
+from utils.opensearch.rdo_open_search import AdWithRDO, RdoIndexName, RdoOpenSearch
 import utils.metadata_sub_bucket as metadata
 from multiprocessing import Process, Pipe 
 from .tags import ads_tags_repository
@@ -850,13 +850,6 @@ def get_ads_stream_index(event, response):
     try:
         try_compute_ads_stream_index()
         INDEX_FILENAME = 'ads_stream.json'
-        presigned_url = observations_sub_bucket.client.generate_presigned_url(
-            ClientMethod='get_object',
-            Params={
-                'Bucket': observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
-                'Key': INDEX_FILENAME
-            }
-        )
         index = observations_sub_bucket.read_json_file(INDEX_FILENAME)
         if index is None:
             return response.status(500).json({
@@ -864,12 +857,34 @@ def get_ads_stream_index(event, response):
                 'comment': 'FAILED_TO_GET_ADS_STREAM_INDEX',
                 'error': 'ads_stream.json not found'
             })
+        ads_passed_rdo_construction = list(set(index.get('ads_passed_rdo_construction', [])))
+        # presigned_url = observations_sub_bucket.client.generate_presigned_url(
+        #     ClientMethod='get_object',
+        #     Params={
+        #         'Bucket': observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
+        #         'Key': INDEX_FILENAME
+        #     }
+        # )
+        # Save the ads with rdo construction to a file
+        observations_sub_bucket.client.put_object(
+            Bucket=observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
+            Key='ads_passed_rdo_construction.json',
+            Body=json.dumps(ads_passed_rdo_construction).encode('utf-8')
+        )
         
-        ads_passed_rdo_construction = index.get('ads_passed_rdo_construction', [])
+        # Generate a presigned URL for the ads_passed_rdo_construction.json file
+        presigned_url = observations_sub_bucket.client.generate_presigned_url(
+            ClientMethod='get_object',
+            Params={
+                'Bucket': observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
+                'Key': 'ads_passed_rdo_construction.json'
+            },
+        )
+        
         return {
             'success': True,
             'presigned_url': presigned_url,
-            'ads': ads_passed_rdo_construction
+            # 'ads': ads_passed_rdo_construction
         }
     except Exception as e:
         return response.status(500).json({
@@ -1331,9 +1346,8 @@ def request_index(event, response):
     observer_id, timestamp, ad_id = event['ad_params']
     try:
         ad_with_rdo = AdWithRDO(observer_id, timestamp, ad_id)
-        open_search = RdoOpenSearch()
-        data = ad_with_rdo.fetch_rdo()
-        open_search.put(ad_with_rdo, data)
+        open_search = RdoOpenSearch(index=RdoIndexName.PRODUCTION)
+        open_search.put(ad_with_rdo, reduce=True)
         return {
             'success': True
         }
