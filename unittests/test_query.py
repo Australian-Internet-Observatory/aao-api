@@ -14,6 +14,14 @@ class QueryTestCase(unittest.TestCase):
         results = client.query(query)
         self.assertGreater(len(results), 0)
         
+    def test_observer_id_empty(self):
+        query = {
+            "args": [],
+            "method": "OBSERVER_ID_CONTAINS"
+        }
+        results = client.query(query)
+        self.assertEqual(len(results), 0)
+        
     def test_observer_id_contain_multiple(self):
         query = {
             "args": [
