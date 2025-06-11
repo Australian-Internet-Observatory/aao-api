@@ -1,5 +1,6 @@
 from configparser import ConfigParser
 from dataclasses import dataclass, field
+from enum import Enum
 import json
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from utils import observations_sub_bucket
@@ -7,6 +8,8 @@ from requests_aws4auth import AWS4Auth
 import boto3
 import botocore
 import time
+
+from utils.reduce_rdo.reduce_rdo import RdoReducer
 
 config = ConfigParser()
 config.read('config.ini')
@@ -42,11 +45,14 @@ class AdWithRDO:
     def __post_init__(self):
         self.rdo_path = f"{self.observer_id}/rdo/{self.timestamp}.{self.ad_id}/output.json"
         self.open_search_id = f"{self.observer_id}.{self.ad_id}"
-        
-    def fetch_rdo(self):
+    
+    def fetch_rdo(self, remove_fields=False):
         if not hasattr(self, "rdo_content"):
             self.rdo_content = observations_sub_bucket.read_json_file(self.rdo_path)
-            
+        
+        if not remove_fields:
+            return self.rdo_content
+        
         fields_to_remove = [
             ['enrichment', 'meta_adlibrary_scrape', 'comparisons'],
             ['enrichment', 'ccl'],
@@ -74,26 +80,60 @@ class AdWithRDO:
         # del self.rdo_content["observation"]["whitespace_derived_signature"]
         return self.rdo_content
 
+class RdoIndexName(Enum):
+    TEST = 'test-rdo-index'
+    PRODUCTION = 'reduced-rdo-index'
+    STAGING = 'reduced-rdo-index-v20250606'
+
+# RDO_INDEX = 'ads-rdo-index'
 # RDO_INDEX = 'rdo-index'
-RDO_INDEX = 'ads-rdo-index'
 class RdoOpenSearch:
-    def __init__(self):
-        self.index = RDO_INDEX
+    def __init__(self, index=RdoIndexName.PRODUCTION):
+        self.index = index.value
         self.client = client
-        
+    
+    def create_index(self):
+        # Create the index with the specified mapping if it does not exist
+        try:
+            self.client.indices.create(index=self.index)
+        except Exception as e:
+            print(f"Index creation failed: {e}")
+    
+    def delete_index(self):
+        # Delete the index if it exists
+        try:
+            self.client.indices.delete(index=self.index)
+        except Exception as e:
+            print(f"Index deletion failed: {e}")
+    
     def search(self, query):
         return self.client.search(index=self.index, body=query, params={
             "timeout": 300 # up to 5 minute / query instead of 10 seconds
         })
     
     def get(self, id):
-        return self.client.get(index=self.index, id=id)
+        return self.client.get(index=self.index, id=id, params={
+            "timeout": 300 # up to 5 minute / query instead of 10 seconds
+        })
     
-    def put(self, ad_with_rdo: AdWithRDO, rdo_data):
-        return self.client.index(index=self.index, id=ad_with_rdo.open_search_id, body=rdo_data)
+    def put(self, ad_with_rdo: AdWithRDO, reduce=True):
+        # Attempt to reduce the RDO content if a reducer is provided
+        body = ad_with_rdo.fetch_rdo()
+        if reduce:
+            version = 1
+            # Attempt to get the version in the body
+            if isinstance(body, dict) and 'version' in body:
+                version = body['version']
+            reducer = RdoReducer().set_version(version)
+            body = reducer(body)
+        return self.client.index(index=self.index, id=ad_with_rdo.open_search_id, body=body, params={
+            "timeout": 300
+        })
     
     def delete(self, id):
-        return self.client.delete(index=self.index, id=id)
+        return self.client.delete(index=self.index, id=id, params={
+            "timeout": 300 # up to 5 minute / query instead of 10 seconds
+        })
 
 def get_hit_source_id(hit):
     # Extract the observer id and observation id

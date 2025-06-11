@@ -40,6 +40,11 @@ def datetime_before(arg):
 
 @register("OBSERVER_ID_CONTAINS")
 def observer_id_contains(arg):
+    # If no args, return empty query
+    if not arg["args"]:
+        return {
+            "match_none": {}
+        }
     should_query = [{"wildcard": {"observer.uuid": {"value": f'*{observer_id}*'}}} for observer_id in arg["args"]]
     return {
         "bool": {

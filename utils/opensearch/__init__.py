@@ -1,6 +1,6 @@
 import json
 from utils.opensearch.boolean_query_converter import convert_to_opensearch_format
-from utils.opensearch.rdo_open_search import RdoOpenSearch, get_hit_source_id
+from utils.opensearch.rdo_open_search import RdoIndexName, RdoOpenSearch, get_hit_source_id
 
 class AdQuery:
     def query(self, query_dict: dict):
@@ -29,7 +29,7 @@ class AdQuery:
         }
         print("Parsed OpenSearch query:")
         print(json.dumps(query, indent=4))
-        rdo_search = RdoOpenSearch()
+        rdo_search = RdoOpenSearch(index=RdoIndexName.PRODUCTION)
         results = rdo_search.search(query)
         hits = results["hits"]["hits"]
         print(f"Initial query took {results['took']}ms")
