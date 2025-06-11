@@ -11,7 +11,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "OBSERVER_ID_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
         
     def test_observer_id_empty(self):
@@ -19,7 +19,7 @@ class QueryTestCase(unittest.TestCase):
             "args": [],
             "method": "OBSERVER_ID_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertEqual(len(results), 0)
         
     def test_observer_id_contain_multiple(self):
@@ -30,7 +30,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "OBSERVER_ID_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
         
     def test_page_name_contains_single(self):
@@ -40,7 +40,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "PAGE_NAME_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
     
     def test_page_name_contains_multiple(self):
@@ -51,7 +51,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "PAGE_NAME_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
     
     def test_page_name_contains_partial(self):
@@ -61,7 +61,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "PAGE_NAME_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertEqual(len(results), 0)
     
     def test_page_name_contains_case_insensitive(self):
@@ -71,7 +71,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "PAGE_NAME_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
     
     def test_datetime_after(self):
@@ -81,7 +81,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "DATETIME_AFTER"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
         
     def test_datetime_before(self):
@@ -91,7 +91,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "DATETIME_BEFORE"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
 
     def test_observation_id_contains_single(self):
@@ -101,7 +101,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "OBSERVATION_ID_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
 
     def test_observation_id_contains_multiple(self):
@@ -112,7 +112,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "OBSERVATION_ID_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
 
     def test_categories_contains_single(self):
@@ -122,7 +122,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "CATEGORIES_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
         
     def test_categories_contains_partial(self):
@@ -132,7 +132,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "CATEGORIES_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertEqual(len(results), 0)
 
     def test_anything_contains_partial(self):
@@ -142,7 +142,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "ANYTHING_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertEqual(len(results), 0)
 
     def test_anything_contains_single(self):
@@ -152,7 +152,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "ANYTHING_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
 
     def test_anything_contains_multiple(self):
@@ -163,7 +163,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "ANYTHING_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
     
     def test_anything_contains_long(self):
@@ -173,7 +173,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "ANYTHING_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         self.assertGreater(len(results), 0)
         
     def test_query_by_observer_id_v2(self):
@@ -183,7 +183,7 @@ class QueryTestCase(unittest.TestCase):
             ],
             "method": "OBSERVER_ID_CONTAINS"
         }
-        results = client.query(query)
+        results = client.query_all(query)
         print(results)
         self.assertGreater(len(results), 0)
         
