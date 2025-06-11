@@ -88,9 +88,21 @@ class RdoIndexName(Enum):
 # RDO_INDEX = 'ads-rdo-index'
 # RDO_INDEX = 'rdo-index'
 class RdoOpenSearch:
-    def __init__(self, index=RdoIndexName.PRODUCTION):
-        self.index = index.value
+    def __init__(self, index : RdoIndexName | None = RdoIndexName.PRODUCTION):
+        self.index = index.value if index is not None else None
         self.client = client
+    
+    def create_pit(self):
+        # Create a Point In Time (PIT) for the index
+        try:
+            response = self.client.create_pit(index=self.index, params={
+                "keep_alive": "5m"  # Keep the PIT alive for 5 minutes
+            })
+            print(f"Created PIT: {response}")
+            return response['pit_id']
+        except Exception as e:
+            print(f"Failed to create PIT: {e}")
+            return None
     
     def create_index(self):
         # Create the index with the specified mapping if it does not exist

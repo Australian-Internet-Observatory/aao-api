@@ -1459,7 +1459,55 @@ def request_index(event, response):
             'success': False,
             'comment': f"Error indexing ad: {observer_id}/{timestamp}.{ad_id} - {str(e)}"
         })
-    
+
+@route('ads/query/new-session', 'GET')
+@use(authenticate)
+def new_query_session(event, response):
+    """Create a new query session for ads.
+
+    This endpoint is used to create a new query session for ads, allowing users to perform queries on ads.
+    ---
+    tags:
+        - ads
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            session_id:
+                                type: string
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'SESSION_CREATION_FAILED'
+    """
+    try:
+        ad_query = AdQuery()
+        session_id = ad_query.create_session()
+        return {
+            'success': True,
+            'session_id': session_id
+        }
+    except Exception as e:
+        return response.status(400).json({
+            'success': False,
+            'comment': f"Error creating query session: {str(e)}"
+        })
+
 @route('ads/query', 'POST')
 @use(authenticate)
 def query(event, response):
@@ -1483,6 +1531,21 @@ def query(event, response):
                             type: array
                             items:
                                 type: object
+                        session_id:
+                            type: string
+                            example: 'my-session-id'
+                        context:
+                            type: object
+                            description: Additional context for the query.
+                            properties:
+                                continuation_key:
+                                    type: string
+                                    description: The continuation key for the next page of results, if applicable.
+                                    example: '1729261457039'
+                                page_size:
+                                    type: integer
+                                    description: The number of results to return per page.
+                                    example: 1000
     responses:
         200:
             description: A successful response
@@ -1501,6 +1564,17 @@ def query(event, response):
                                 type: array
                                 items:
                                     $ref: '#/components/schemas/Ad'
+                            context:
+                                type: object
+                                properties:
+                                    continuation_key:
+                                        type: string
+                                        description: The continuation key for the next page of results, if applicable.
+                                        example: 1729261457039
+                                    total_results:
+                                        type: integer
+                                        description: The total number of results available for the query.
+                                        example: 10000
         400:
             description: A failed response
             content:
@@ -1515,30 +1589,45 @@ def query(event, response):
                                 type: string
                                 example: 'INVALID_QUERY'
     """
-    query_dict = event['body']
+    method = event['body'].get('method', None)
+    args = event['body'].get('args', None)
+    if method is None or args is None:
+        return response.status(400).json({
+            'success': False,
+            'comment': 'INVALID_QUERY: method and args are required'
+        })
+    query_dict = {
+        'method': method,
+        'args': args
+    }
     print(f"User '{event['user']['username']}' requested ads with query:")
     print(json.dumps(query_dict, indent=4))
+    
+    session_id = event['body'].get('session_id', None)
+    context = event['body'].get('context', {})
+    
     ad_query = AdQuery()
     try:
-        # existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
-        result = ad_query.query(query_dict) # List of ad paths that satisfy the query
-        # print("Enriching ads...")
-        # ads = [parse_ad_path(ad_path) for ad_path in result]
-        # batch_enricher = BatchEnricher(ads=ads, parallel=True)
-        # expanded = batch_enricher.attach_attributes(include=existing_attribute_paths).to_dict()
+        # result = ad_query.query_all(query_dict) # List of ad paths that satisfy the query
         
-        # def parse_expanded_ad(ad):
-        #     ad['attributes'] = ad.get('metadata', {}).get('attributes', {})
-        #     # Remove the metadata key
-        #     ad.pop('metadata', None)
-        #     return ad
+        if session_id is not None:
+            result, last_key, total_results = ad_query.query_paginated(
+                query_dict=query_dict, 
+                session_id=session_id,
+                page_size=context.get('page_size', 1000),
+                search_after=context.get('continuation_key', None)
+            )
+        else:
+            result = ad_query.query_all(query_dict)
         
-        # print("Enriching ads complete, took", round(batch_enricher.execution_time_ms, 2), "ms")
         return {
             'success': True,
             'result': result,
-            'expand': [] # Keeping for legacy type support
-            # 'expand': [parse_expanded_ad(ad) for ad in expanded] 
+            'expand': [], # Keeping for legacy type support
+            'context': {
+                'continuation_key': last_key if session_id is not None else None,
+                'total_results': total_results if session_id is not None else len(result)
+            }
         }
     except Exception as e:
         return response.status(400).json({

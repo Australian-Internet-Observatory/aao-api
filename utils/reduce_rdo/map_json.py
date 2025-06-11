@@ -14,7 +14,7 @@ def create_regex_from_path(path):
     Example:
     >>> create_regex_from_path("a.b.[a].[b].c.[c]")
     {
-        "regex": r"a\.b\.\[(d+)\].\[(d+)\]\.c\.\[(d+)\]",
+        "regex": r"a\\.b\\.\\[(d+)\\].\\[(d+)\\]\\.c\\.\\[(d+)\\]",
         "indices": ["a", "b", "c"],
         "wildcards": []
     }
@@ -53,7 +53,7 @@ def match_path(path, regex, indices, **kwargs):
         dict: A dictionary containing the regex pattern and a boolean indicating if the indices match.
         
     Example:
-    >>> match_path("a.b.[0].[1].c.[0]", r"a\.b\.\[d+\].\[d+\]\.c\.\[d+\]", ["a", "b", "c"])
+    >>> match_path("a.b.[0].[1].c.[0]", r"a\\.b\\.\\[d+\\].\\[d+\\]\\.c\\.\\[d+\\]", ["a", "b", "c"])
     {
         "match": True,
         "indices": {
