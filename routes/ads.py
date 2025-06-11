@@ -1630,7 +1630,6 @@ def query(event, response):
             }
         }
     except Exception as e:
-        raise e
         return response.status(400).json({
             'success': False,
             'comment': f"Error executing query: {str(e)}"
