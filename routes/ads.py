@@ -22,6 +22,7 @@ from utils.opensearch.rdo_open_search import AdWithRDO, RdoIndexName, RdoOpenSea
 import utils.metadata_sub_bucket as metadata
 from multiprocessing import Process, Pipe 
 from .tags import ads_tags_repository
+import concurrent.futures
 
 # try:
 #     EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
@@ -861,14 +862,36 @@ def try_compute_ads_stream_index():
     print('Cache expired or not found. Computing ads stream index...')
     observers = observations_sub_bucket.list_dir()
     
-    ads_stream_index = {}
-    # For each observer, 
-    #   read the quick_access_cache.json file and
-    #   compute the ads stream index
+    # Prepare list of files to fetch
+    observer_files_to_process = []
     for observer_id in observers:
         if observer_id.endswith('/'):
             observer_id = observer_id[:-1]
-        observer_data = observations_sub_bucket.read_json_file(f'{observer_id}/quick_access_cache.json')
+        observer_files_to_process.append(f'{observer_id}/quick_access_cache.json')
+
+    print(f'Fetching {len(observer_files_to_process)} observer files in parallel...')
+
+    # Fetch all observer data in parallel
+    MAX_WORKERS = 10
+    all_observer_data = {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_file = {
+            executor.submit(observations_sub_bucket.read_json_file, filepath): filepath
+            for filepath in observer_files_to_process
+        }
+        for future in concurrent.futures.as_completed(future_to_file):
+            filepath = future_to_file[future]
+            try:
+                data = future.result()
+                if data:
+                    all_observer_data[filepath] = data
+            except Exception as exc:
+                print(f'{filepath} generated an exception: {exc}')
+
+    ads_stream_index = {}
+    # Process the collected data
+    for observer_filepath, observer_data in all_observer_data.items():
         if observer_data is None:
             continue
         keys = observer_data.keys()
