@@ -27,7 +27,6 @@ def get_login_token():
     response = local_handler(event, None)
     return json.loads(response['body'])['token']
 
-@pytest.mark.skip(reason="Helper function, not a test")
 def create_tag(tag={
     "name": "Test Tag",
     "description": "This is a test tag",

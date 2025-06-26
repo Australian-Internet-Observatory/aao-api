@@ -6,8 +6,6 @@ import json
 import math
 
 import dateutil.tz
-from db.clients.s3_storage_client import S3StorageClient
-from db.repository import Repository
 from enricher import RdoBuilder
 from middlewares.authenticate import authenticate
 from models.ad import Ad
@@ -85,16 +83,14 @@ class Enricher:
             self.attributes = {}
         return self
     
-    def attach_tags(self, include=None):
+    def attach_tags(self):
         """Attach tags to the ad."""
         # Fetch the tags for the ad
         try:
-            ad_key = f"{self.observer_id}_{self.timestamp}.{self.ad_id}"
-            if include is not None and ad_key not in include:
-                raise ValueError(f"Key {ad_key} not in include list")
-            tags = ads_tags_repository.get(ad_key, AdTag(id=ad_key, tags=[]))
-            print(f"Tags for {ad_key}: {tags}")
-            self.tags = tags.tags
+            tags: list[AdTag] = ads_tags_repository.get({ "observation_id": self.ad_id })
+            tag_ids = [tag.tag_id for tag in tags]
+            
+            self.tags = tag_ids
         except Exception as e:
             print(f"Error fetching tags for {self.observer_id}/{self.timestamp}.{self.ad_id}: {e}")
             self.tags = []

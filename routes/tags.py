@@ -1,27 +1,23 @@
-from db.clients.s3_storage_client import S3StorageClient
+from db.clients.rds_storage_client import RdsStorageClient
 from db.repository import Repository
 from middlewares.authenticate import authenticate
-from models.ad_tag import AdTag
-from models.tag import Tag
+from models.ad_tag import AdTag, AdTagORM
+from models.tag import Tag, TagORM
 from routes import route
 from utils import Response, use
-from uuid import uuid4
 
 tags_repository = Repository(
     model=Tag,
-    client=S3StorageClient(
-        bucket='fta-mobile-observations-holding-bucket',
-        prefix='metadata/tags',
-        extension='json'
+    client=RdsStorageClient(
+        base_orm=TagORM
     )
 )
 
 ads_tags_repository = Repository(
     model=AdTag,
-    client=S3StorageClient(
-        bucket='fta-mobile-observations-holding-bucket',
-        prefix='metadata/ads_tags',
-        extension='json'
+    keys=['observation_id', 'tag_id'],
+    client=RdsStorageClient(
+        base_orm=AdTagORM
     )
 )
 
@@ -114,7 +110,7 @@ def get_tag(event, response: Response, context):
         description: Tag not found
     """
     tag_id = event['pathParameters']['tag_id']
-    tag = tags_repository.get(tag_id)
+    tag = tags_repository.get({ 'id': tag_id })[0]
     if not tag:
         response.status(404).json({'success': False, 'comment': 'Tag not found'})
         return
@@ -175,7 +171,7 @@ def update_tag(event, response: Response, context):
     """
     tag_id = event['pathParameters']['tag_id']
     data = event['body']
-    tag = tags_repository.get(tag_id)
+    tag = tags_repository.get({ 'id': tag_id })[0]
     if not tag:
         response.status(404).json({'success': False, 'comment': 'Tag not found'})
         return
@@ -227,10 +223,10 @@ def delete_tag(event, response: Response, context):
                   example: 'Tag not found'
     """
     tag_id = event['pathParameters']['tag_id']
-    tag = tags_repository.get(tag_id)
+    tag = tags_repository.get({ 'id': tag_id })[0]
     if not tag:
         return response.status(404).json({'success': False, 'comment': 'Tag not found'})
-    tags_repository.delete(tag)
+    tags_repository.delete({ 'id': tag_id })
     return response.json({'success': True})
     
 @route('ads/{observer_id}/{timestamp}.{ad_id}/tags', 'GET')
@@ -285,14 +281,13 @@ def get_tags_for_ad(event, response: Response, context):
                   type: string
                   example: 'ERROR_RETRIEVING_TAG_IDS'
     """
-    observer_id = event['pathParameters']['observer_id']
-    timestamp = event['pathParameters']['timestamp']
     ad_id = event['pathParameters']['ad_id']
-    ad_key = f"{observer_id}_{timestamp}.{ad_id}"
 
     try:
-        tags: AdTag = ads_tags_repository.get(ad_key, AdTag(id=ad_key, tags=[]))
-        return {'success': True, 'tag_ids': tags.tags}
+        tags: list[AdTag] = ads_tags_repository.get({ "observation_id": ad_id })
+        tag_ids = [tag.tag_id for tag in tags]
+        
+        return {'success': True, 'tag_ids': tag_ids}
     except Exception as e:
         response.status(400).json({'success': False, 'comment': 'ERROR_RETRIEVING_TAG_IDS'})
         return
@@ -364,16 +359,18 @@ def update_tags_for_ad(event, response: Response, context):
     print("Applying to ad:", ad_key, "tags:", data['tag_ids'])
 
     try:
-        # If no tag ids are provided, remove the ad from the repository
+        # Delete existing records to avoid duplicates
+        ads_tags_repository.delete({ 'observation_id': ad_id })
         if not data['tag_ids']:
-            ads_tags_repository.delete(ads_tags_repository.get(ad_key))
             return {'success': True}
         
-        # Otherwise, create or update the ad with the provided tag ids
-        ads_tags_repository.create_or_update({
-            'id': ad_key,
-            'tags': data['tag_ids']
-        })
+        # If there are tags, create new records
+        for tag_id in data['tag_ids']:
+            ad_tag = AdTag(
+                observation_id=ad_id,
+                tag_id=tag_id
+            )
+            ads_tags_repository.create_or_update(ad_tag)
         return {'success': True}
     except Exception as e:
         response.status(400).json({'success': False, 'comment': 'ERROR_UPDATING_TAG_IDS', 'error': str(e)})

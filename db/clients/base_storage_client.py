@@ -22,22 +22,22 @@ class BaseStorageClient:
         """Disconnect from the storage system."""
         raise NotImplementedError("Subclasses should implement this method.")
 
-    def get(self, key: str):
+    def get(self, keys: dict):
         """Get an object from the storage system by its key. The key is the unique identifier for the object."""
         raise NotImplementedError("Subclasses should implement this method.")
     
-    def put(self, key: str, value):
+    def put(self, value: dict):
         """Put an object into the storage system with the given key and value."""
         raise NotImplementedError("Subclasses should implement this method.")
     
-    def delete(self, key: str):
+    def delete(self, keys: dict):
         """Delete an object from the storage system by its key."""
         raise NotImplementedError("Subclasses should implement this method.")
     
-    def list_ids(self):
+    def list_ids(self) -> list[dict]:
         """List all object IDs in the storage system."""
         raise NotImplementedError("Subclasses should implement this method.")
     
-    def list(self):
+    def list(self) -> list[dict]:
         """List all objects in the storage system as a list of key-value pairs."""
         raise NotImplementedError("Subclasses should implement this method.")
