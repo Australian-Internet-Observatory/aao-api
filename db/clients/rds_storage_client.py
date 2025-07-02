@@ -95,7 +95,7 @@ class RdsStorageClient(BaseStorageClient):
                         setattr(existing_orm, key, val)
                     session.commit()
                     return
-                print(f"[RdsStorageClient] Creating new object with value: {value}")
+                # print(f"[RdsStorageClient] Creating new object with value: {value}")
                 # Otherwise, create a new object
                 orm = self.base_orm(**value)
                 session.add(orm)
@@ -107,14 +107,16 @@ class RdsStorageClient(BaseStorageClient):
         """Delete an object from the RDS table."""
         if not self.connected:
             raise ConnectionError("Not connected to the RDS database.")
+        # Protect against empty keys to avoid accidental deletion of all objects
+        if not keys:
+            raise ValueError("Keys must not be empty. Provide at least one key to delete an object.")
         try:
             with self.session_maker() as session:
                 query = session.query(self.base_orm).filter_by(**keys)
-                print(f"[RdsStorageClient] Executing query: {query}")
+                # print(f"[RdsStorageClient] Executing query: {query}")
                 results = query.all()
                 if not results:
-                    print(f"[RdsStorageClient] No objects found with keys: {keys}")
-                    return
+                    raise ValueError(f"No objects found with keys: {keys}")
                 for result in results:
                     session.delete(result)
                 session.commit()

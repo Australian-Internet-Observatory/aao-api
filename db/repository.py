@@ -97,13 +97,20 @@ class Repository():
             return default
         return [self._model.model_validate(item) for item in data]
 
+    def get_first(self, keys: dict, default = None) -> BaseModel | None:
+        """Retrieve the first item from the storage by one or more keys."""
+        data = self._client.get(keys)
+        if not data or len(data) == 0:
+            return default
+        return self._model.model_validate(data[0])
+
     def delete(self, item: BaseModel | dict) -> None:
         """Delete an item from the storage."""
         if isinstance(item, BaseModel):
             dump = item.model_dump()
             item_keys = { key: dump[key] for key in self._keys if key in dump }
         elif isinstance(item, dict):
-            item_keys = { key: item[key] for key in self._keys if key in item }
+            item_keys = item
         elif isinstance(item, frozenset):
             item_keys = str(item)
         self._client.delete(item_keys)

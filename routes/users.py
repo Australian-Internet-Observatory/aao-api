@@ -1,25 +1,24 @@
 from datetime import datetime
+from db.clients.rds_storage_client import RdsStorageClient
+from db.repository import Repository
+from models.user import User, UserORM
 from routes import route
 from middlewares.authorise import Role, authorise
 from middlewares.authenticate import authenticate
 from utils import use, jwt
-import hashlib
-import boto3
-import json
-import utils.metadata_sub_bucket as metadata
+from utils.hash_password import hash_password
 from urllib.parse import unquote
 
 from configparser import ConfigParser
 config = ConfigParser()
 config.read('config.ini')
 
-session = boto3.Session(
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY'],
-    region_name='ap-southeast-2'
+users_repository = Repository(
+    model=User,
+    client=RdsStorageClient(
+        base_orm=UserORM
+    )
 )
-
-USERS_FOLDER_PREFIX = 'dashboard-users'
 
 @route('users', 'GET')
 @use(authenticate)
@@ -79,12 +78,17 @@ def list_users(event):
                                 type: string
                                 example: 'UNAUTHORISED'
     """
-    user_keys = metadata.list_objects(f'{USERS_FOLDER_PREFIX}/')
-    keys = [key for key in user_keys if key.endswith('credentials.json')]
+    user_entities = users_repository.list()
     users = []
-    for key in keys:
-        user_data = json.loads(metadata.get_object(key).decode('utf-8'))
-        users.append(user_data)
+    for user in user_entities:
+        user_dict = {
+            "id": user.id,
+            "username": user.username,
+            "enabled": user.enabled,
+            "full_name": user.full_name,
+            "role": user.role,
+        }
+        users.append(user_dict)
     return users
 
 @route('users', 'POST')
@@ -160,23 +164,19 @@ def create_user(event, response):
                                 example: 'UNAUTHORISED'
     """
     new_user = event['body']
-    user_path = f'{USERS_FOLDER_PREFIX}/{new_user["username"]}/credentials.json'
     
     # Check if user already exists
-    try:
-        metadata.head_object(user_path)
+    if users_repository.get_first({'username': new_user['username']}) is not None:
         return response.status(400).json({
             "success": False,
             "comment": "User already exists"
         })
-    except Exception as e:
-        print(e)
     
     # Hash the password
-    new_user['password'] = hashlib.md5(new_user['password'].encode('utf-8')).hexdigest()
+    new_user['password'] = hash_password(new_user['password'])
     
     # Save the new user
-    metadata.put_object(user_path, json.dumps(new_user).encode('utf-8'))
+    users_repository.create(new_user)
     
     return response.status(201).json({
         "success": True,
@@ -267,15 +267,14 @@ def edit_user(event, response):
             "comment": "UNAUTHORIZED"
         })
     
-    user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
-    try:
-        old_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
-    except Exception as e:
+    user_entity = users_repository.get_first({'username': username})
+    if user_entity is None:
         return response.status(400).json({
             "success": False,
             "comment": "User not found"
         })
     
+    old_data = user_entity.model_dump()
     new_data = event['body']
     new_data.pop('username', None)
     
@@ -298,11 +297,11 @@ def edit_user(event, response):
     
     # If the password is being updated, hash it
     if 'password' in new_data:
-        new_data['password'] = hashlib.md5(new_data['password'].encode('utf-8')).hexdigest()
+        new_data['password'] = hash_password(new_data['password'])
     
     # Update the user data
     combined_data = {**old_data, **new_data}
-    metadata.put_object(user_path, json.dumps(combined_data).encode('utf-8'))
+    users_repository.update(combined_data)
     return {
         "success": True,
         "comment": "User updated successfully"
@@ -350,10 +349,11 @@ def get_current_user(event, response):
                                 type: string
                                 example: 'User not found'
     """
-    caller = event['user']
-    user_path = f'{USERS_FOLDER_PREFIX}/{caller["username"]}/credentials.json'
     try:
-        user_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
+        user_entity = users_repository.get_first({'username': event['user']['username']})
+        if user_entity is None:
+            raise Exception("User not found")
+        user_data = user_entity.model_dump()
         return user_data
     except Exception as e:
         return response.status(400).json({
@@ -436,9 +436,11 @@ def get_user(event, response):
             "comment": "UNAUTHORIZED"
         })
     
-    user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
     try:
-        user_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
+        user_entity = users_repository.get_first({'username': username})
+        if user_entity is None:
+            raise Exception("User not found")
+        user_data = user_entity.model_dump()
         return user_data
     except Exception as e:
         return response.status(400).json({
@@ -505,11 +507,10 @@ def delete_user(event, response):
     username = event['pathParameters']['username']
     # Decode the URL-encoded username
     username = unquote(username)
-    user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
+    
     try:
-        metadata.delete_object(user_path)
+        users_repository.delete({'username': username})
     except Exception as e:
-        print(e)
         return response.status(400).json({
             "success": False,
             "comment": "User not found"
@@ -517,5 +518,5 @@ def delete_user(event, response):
     
     return response.status(200).json({
         "success": True,
-        "comment": "User deleted successfully"
+        "comment": f"User {username} deleted successfully"
     })

@@ -19,7 +19,7 @@ class TagsRepositoryTestCase(unittest.TestCase):
             hex="#FFFFFF"
         )
         tags_repository.create(tag)
-        retrieved_tag = tags_repository.get({ "id": "test_id_create" })
+        retrieved_tag = tags_repository.get_first({ "id": "test_id_create" })
         self.assertIsNotNone(retrieved_tag)
         self.assertEqual(retrieved_tag.id, tag.id)
         self.assertEqual(retrieved_tag.name, tag.name)
@@ -60,7 +60,7 @@ class TagsRepositoryTestCase(unittest.TestCase):
         )
         tags_repository.create(tag)
         tags_repository.delete(tag)
-        retrieved_tag = tags_repository.get({ "id": "test_id_delete" })
+        retrieved_tag = tags_repository.get_first({ "id": "test_id_delete" })
         self.assertIsNone(retrieved_tag)
         # Ensure the tag is deleted
         all_tags = tags_repository.list()

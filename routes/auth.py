@@ -46,9 +46,9 @@ def login(event, response: Response):
                             comment:
                                 type: string
     """
-    username = event['body']['username']
-    password = event['body']['password']
     try:
+        username = event['body']['username']
+        password = event['body']['password']
         return {
             'success': True,
             'token': jwt.create_session_token(username, password)
@@ -100,7 +100,12 @@ def verify(event, response: Response):
                                 type: string
                                 example: 'VERIFY_FAILED'
     """
-    token = event['body']['token']
+    token = event['body'].get('token', None)
+    if not token:
+        return response.status(400).json({
+            'success': False,
+            'comment': 'TOKEN_REQUIRED'
+        })
     if jwt.verify_token(token):
         return {
             'success': True
@@ -151,7 +156,12 @@ def logout(event, response: Response):
                                 type: string
                                 example: 'LOGOUT_FAILED'
     """
-    token = event['body']['token']
+    token = event['body'].get('token', None)
+    if not token:
+        return response.status(400).json({
+            'success': False,
+            'comment': 'TOKEN_REQUIRED'
+        })
     if jwt.disable_session_token(token):
         return {
             'success': True
@@ -204,8 +214,8 @@ def refresh(event, response: Response):
                                 type: string
                                 example: 'REFRESH_FAILED'
     """
-    token = event['body']['token']
     try:
+        token = event['body']['token']
         return {
             'success': True,
             'token': jwt.refresh_session_token(token)

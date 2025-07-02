@@ -110,10 +110,9 @@ def get_tag(event, response: Response, context):
         description: Tag not found
     """
     tag_id = event['pathParameters']['tag_id']
-    tag = tags_repository.get({ 'id': tag_id })[0]
-    if not tag:
-        response.status(404).json({'success': False, 'comment': 'Tag not found'})
-        return
+    tag = tags_repository.get_first({ 'id': tag_id })
+    if tag is None:
+        return response.status(404).json({'success': False, 'comment': 'Tag not found'})
     return tag.model_dump_json()
 
 @route('/tags/{tag_id}', 'PUT')
@@ -171,10 +170,10 @@ def update_tag(event, response: Response, context):
     """
     tag_id = event['pathParameters']['tag_id']
     data = event['body']
-    tag = tags_repository.get({ 'id': tag_id })[0]
-    if not tag:
-        response.status(404).json({'success': False, 'comment': 'Tag not found'})
-        return
+    tag = tags_repository.get_first({ 'id': tag_id })
+    if tag is None:
+        return response.status(404).json({'success': False, 'comment': 'Tag not found'})
+    
     tag.name = data['name']
     tag.description = data['description']
     tag.hex = data['hex']
@@ -223,8 +222,8 @@ def delete_tag(event, response: Response, context):
                   example: 'Tag not found'
     """
     tag_id = event['pathParameters']['tag_id']
-    tag = tags_repository.get({ 'id': tag_id })[0]
-    if not tag:
+    tag = tags_repository.get_first({ 'id': tag_id })
+    if tag is None:
         return response.status(404).json({'success': False, 'comment': 'Tag not found'})
     tags_repository.delete({ 'id': tag_id })
     return response.json({'success': True})
@@ -289,8 +288,7 @@ def get_tags_for_ad(event, response: Response, context):
         
         return {'success': True, 'tag_ids': tag_ids}
     except Exception as e:
-        response.status(400).json({'success': False, 'comment': 'ERROR_RETRIEVING_TAG_IDS'})
-        return
+        return response.status(400).json({'success': False, 'comment': 'ERROR_RETRIEVING_TAG_IDS'})
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/tags', 'PUT')
 @use(authenticate)
@@ -360,7 +358,13 @@ def update_tags_for_ad(event, response: Response, context):
 
     try:
         # Delete existing records to avoid duplicates
-        ads_tags_repository.delete({ 'observation_id': ad_id })
+        try:
+            ads_tags_repository.delete({ 'observation_id': ad_id })
+        except Exception as e:
+            # If no records found, ignore the error - we will create new ones
+            if "No objects found" in str(e):
+                pass
+        
         if not data['tag_ids']:
             return {'success': True}
         
