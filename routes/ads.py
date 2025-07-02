@@ -11,7 +11,7 @@ from middlewares.authenticate import authenticate
 from models.ad import Ad
 from models.ad_tag import AdTag
 from routes import route
-from routes.ad_attributes import AD_ATTRIBUTES_PREFIX
+from routes.ad_attributes import AD_ATTRIBUTES_PREFIX, ad_attributes_repository
 import utils.observations_sub_bucket as observations_sub_bucket
 from utils import Response, use
 # from utils.query import AdQuery
@@ -21,11 +21,6 @@ import utils.metadata_sub_bucket as metadata
 from multiprocessing import Process, Pipe 
 from .tags import ads_tags_repository
 import concurrent.futures
-
-# try:
-#     EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
-# except Exception as e:
-#     EXISTING_ATTRIBUTE_OBJECTS = None
 
 def parse_ad_path(ad_path):
     """Parse the ad path into its components: observer_id, timestamp, and ad_id."""
@@ -71,15 +66,28 @@ class Enricher:
     
     @timeit
     def attach_attributes(self, include=None):
-        """Fetch the attributes metadata from """
-        ad_attributes_path = f'{AD_ATTRIBUTES_PREFIX}/{self.observer_id}_{self.timestamp}.{self.ad_id}.json'
+        """Fetch the attributes metadata from the repository"""
+        observation_id = f"{self.observer_id}_{self.timestamp}.{self.ad_id}"
         try:
-            # Ignore the ad attributes if the file does not exist
-            if include is not None and ad_attributes_path not in include:
-                raise ValueError(f"Key {ad_attributes_path} not in include list")
-            ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path, include=include).decode('utf-8'))
-            self.attributes = ad_attributes_data
+            # Get attributes from the repository
+            attributes = ad_attributes_repository.get({"observation_id": observation_id})
+            if attributes is None:
+                attributes = []
+            
+            # Convert to the expected format (key-value dictionary)
+            attributes_dict = {}
+            for attr in attributes:
+                attributes_dict[attr.key] = {
+                    "value": attr.value,
+                    "created_at": attr.created_at,
+                    "created_by": attr.created_by,
+                    "modified_at": attr.modified_at,
+                    "modified_by": attr.modified_by
+                }
+            
+            self.attributes = attributes_dict
         except Exception as e:
+            print(f"Error fetching attributes for {observation_id}: {e}")
             self.attributes = {}
         return self
     
@@ -193,16 +201,11 @@ class BatchEnricher:
         return self
         
     def attach_attributes(self):
-        existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
-        enricher_target = lambda enricher: enricher.attach_attributes(include=existing_attribute_paths)
-        # chunk_target = lambda chunk, conn: self._attach_chunk(enricher_target, chunk, conn, include=include)
+        enricher_target = lambda enricher: enricher.attach_attributes()
         return self.attach_enrichment(enricher_target)
     
     def attach_tags(self):
-        existing_tags = ads_tags_repository.list()
-        existing_tags = [f"{tag.id}" for tag in existing_tags]
-        print(f"Existing tags: {existing_tags}")
-        enricher_target = lambda enricher: enricher.attach_tags(include=existing_tags)
+        enricher_target = lambda enricher: enricher.attach_tags()
         return self.attach_enrichment(enricher_target)
     
     def attach_rdo(self):

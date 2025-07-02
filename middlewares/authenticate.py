@@ -25,7 +25,7 @@ def authenticate(event, response, context):
     security:
         - bearerAuth: []
     """
-    headers = event['headers']
+    headers = event.get('headers', None)
     if headers is None:
         response.status(401).json({
             "success": False,
