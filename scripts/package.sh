@@ -19,6 +19,10 @@ rsync -av --progress $DependenciesPath $TempDir --exclude "__pycache__"
 echo "Installing pydantic for x86_64 architecture"
 pip install pydantic --platform manylinux2014_x86_64 --target=$TempDir --implementation cp --only-binary=:all: --upgrade --python-version 3.12
 
+# Install psycopg2-binary for x86_64 architecture
+echo "Installing psycopg2-binary for x86_64 architecture"
+pip install psycopg2-binary --platform manylinux2014_x86_64 --target=$TempDir --implementation cp --only-binary=:all: --upgrade --python-version 3.12
+
 # Zip the contents of the temporary directory (at root)
 echo "Zipping the contents of the $TempDir directory"
 # zip -r ./$ZipFileName ./$TempDir/*

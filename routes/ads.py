@@ -1,38 +1,55 @@
-from dataclasses import dataclass
+import concurrent.futures
 import datetime
-from enum import Enum
 import hashlib
 import json
-import math
 
 import dateutil.tz
+from tqdm import tqdm
+
+from db.clients.rds_storage_client import RdsStorageClient
 from enricher import RdoBuilder
 from middlewares.authenticate import authenticate
-from models.ad import Ad
-from models.ad_tag import AdTag
+from models.ad_tag import AdTag, AdTagORM
+from models.attribute import AdAttributeORM
 from routes import route
-from routes.ad_attributes import AD_ATTRIBUTES_PREFIX, ad_attributes_repository
-import utils.observations_sub_bucket as observations_sub_bucket
+from routes.ad_attributes import ad_attributes_repository
 from utils import Response, use
-# from utils.query import AdQuery
 from utils.opensearch import AdQuery
 from utils.opensearch.rdo_open_search import AdWithRDO, RdoIndexName, RdoOpenSearch
+import utils.observations_sub_bucket as observations_sub_bucket
 import utils.metadata_sub_bucket as metadata
 from multiprocessing import Process, Pipe 
 from .tags import ads_tags_repository
-import concurrent.futures
 
 def parse_ad_path(ad_path):
-    """Parse the ad path into its components: observer_id, timestamp, and ad_id."""
+    """Parse the ad path into its components: observer_id, timestamp, and ad_id.
+    
+    Args:
+        ad_path (str): The full ad path in format "observer_id/temp/timestamp.ad_id"
+        
+    Returns:
+        dict: Dictionary containing observer_id, timestamp, and ad_id
+        
+    Raises:
+        ValueError: If ad_path is None or has invalid format
+    """
     if ad_path is None:
         raise ValueError("ad_path is None")
-    [observer_id, _, rest] = [part for part in ad_path.split('/') if part]
-    observer_id = observer_id
-    parts = rest.split('.')
-    if len(parts) < 2:
-        raise ValueError(f"Invalid ad path: {ad_path}")
-    ad_id = parts[-1]
-    timestamp = ".".join(parts[:-1])
+    
+    parts = [part for part in ad_path.split('/') if part]
+    if len(parts) < 3:
+        raise ValueError(f"Invalid ad path format: {ad_path}")
+    
+    observer_id = parts[0]
+    rest = parts[2]  # Skip the 'temp' part
+    
+    ad_parts = rest.split('.')
+    if len(ad_parts) < 2:
+        raise ValueError(f"Invalid ad path format: {ad_path}")
+    
+    ad_id = ad_parts[-1]
+    timestamp = ".".join(ad_parts[:-1])
+    
     return {
         'observer_id': observer_id,
         'timestamp': timestamp,
@@ -41,16 +58,22 @@ def parse_ad_path(ad_path):
 
 class Enricher:
     """Handles the enrichment of ads with metadata and other relevant information."""
+    
     def __init__(self, ad=None):
+        """Initialize the enricher with ad information.
+        
+        Args:
+            ad (dict, optional): Dictionary containing observer_id, timestamp, and ad_id
+        """
         if ad is not None:
-            self.observer_id = ad.get("observer_id", None)
-            self.timestamp = ad.get("timestamp", None)
-            self.ad_id = ad.get("ad_id", None)
+            self.observer_id = ad.get("observer_id")
+            self.timestamp = ad.get("timestamp")
+            self.ad_id = ad.get("ad_id")
         
         if hasattr(self, 'observer_id') and self.observer_id is not None:
             self.observer = observations_sub_bucket.Observer(self.observer_id)
         else:
-            raise ValueError("observer_id is None")
+            raise ValueError("observer_id is required")
 
         self.execution_time_ms = 0
     
@@ -134,7 +157,18 @@ class Enricher:
         return data
 
 class BatchEnricher:
-    def __init__(self, ads:list[dict]=[], max_workers=128, parallel=False):
+    """Handles batch enrichment of multiple ads with metadata and other relevant information."""
+    
+    def __init__(self, ads: list[dict] = None, max_workers=128, parallel=False):
+        """Initialize the batch enricher.
+        
+        Args:
+            ads (list[dict], optional): List of ad dictionaries to enrich
+            max_workers (int): Maximum number of worker processes for parallel processing
+            parallel (bool): Whether to use parallel processing
+        """
+        if ads is None:
+            ads = []
         self.parallel = parallel
         self.enrichers = [Enricher(ad) for ad in ads]
         self.max_workers = min(max_workers, len(self.enrichers))
@@ -201,12 +235,50 @@ class BatchEnricher:
         return self
         
     def attach_attributes(self):
-        enricher_target = lambda enricher: enricher.attach_attributes()
-        return self.attach_enrichment(enricher_target)
+        """Batch attach attributes to all enrichers using RDS client directly."""
+        rds_client: RdsStorageClient = ad_attributes_repository._client
+        rds_client.connect()
+        
+        observation_ids = [enricher.ad_id for enricher in self.enrichers]
+        results = {}
+        with rds_client.session_maker() as session:
+            query = session.query(AdAttributeORM).filter(AdAttributeORM.observation_id.in_(observation_ids)).all()
+            print(f"[BatchEnricher] Found {len(query)} ads with attributes for {len(observation_ids)} observations.")
+            for result in query:
+                observation_id = result.observation_id
+                if observation_id not in results:
+                    results[observation_id] = {}
+                results[observation_id][result.key] = {
+                    "value": result.value,
+                    "created_at": result.created_at,
+                    "created_by": result.created_by,
+                    "modified_at": result.modified_at,
+                    "modified_by": result.modified_by
+                }
+        
+        for enricher in tqdm(self.enrichers):
+            enricher.attributes = results.get(enricher.ad_id, {})
+        return self
     
     def attach_tags(self):
-        enricher_target = lambda enricher: enricher.attach_tags()
-        return self.attach_enrichment(enricher_target)
+        """Batch attach tags to all enrichers using RDS client directly."""
+        rds_client: RdsStorageClient = ads_tags_repository._client
+        rds_client.connect()
+        
+        observations = [enricher.ad_id for enricher in self.enrichers]
+        results = {}
+        with rds_client.session_maker() as session:
+            query = session.query(AdTagORM).filter(AdTagORM.observation_id.in_(observations)).all()
+            print(f"[BatchEnricher] Found {len(query)} ads with tags for {len(observations)} observations.")
+            for result in query:
+                observation_id = result.observation_id
+                if observation_id not in results:
+                    results[observation_id] = []
+                results[observation_id].append(result.tag_id)
+        
+        for enricher in tqdm(self.enrichers):
+            enricher.tags = results.get(enricher.ad_id, [])
+        return self
     
     def attach_rdo(self):
         enricher_target = lambda enricher: enricher.attach_rdo()
@@ -289,24 +361,23 @@ def get_access_cache(event, response):
         })
     
     ads_passed_rdo_constructions = observer_data.get('ads_passed_rdo_construction', [])
-    # expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in ad_paths]
     return {
         'success': True,
         'data': observer_data,
-        'ads': ads_passed_rdo_constructions,
-        # 'expanded': expanded
+        'ads': ads_passed_rdo_constructions
     }
 
 
-def get_stiched_frame_from_rdo(observer_id, timestamp, ad_id):
+def get_stitched_frame_from_rdo(observer_id, timestamp, ad_id):
+    """Get the stitched frames from RDO for a specific ad."""
     observer = observations_sub_bucket.Observer(observer_id)
     rdo = observer.get_pre_constructed_rdo(timestamp, ad_id)
     if rdo is None:
         raise Exception(f"RDO not found for {observer_id}/{timestamp}.{ad_id}")
     media: list[str] = rdo['media']
     # temp-v2 is the new version of stitching
-    stiched_frames = [frame for frame in media if 'stitching' in frame or 'temp-v2' in frame]
-    return stiched_frames
+    stitched_frames = [frame for frame in media if 'stitching' in frame or 'temp-v2' in frame]
+    return stitched_frames
 
 
 @route('ads/{observer_id}/recent', 'GET')
@@ -573,6 +644,21 @@ def get_batch_ads_presign(event, response: Response):
             'success': False,
             'comment': 'Invalid request, missing ads or metadata_types'
         })
+        
+    # Ensure metadata_types is a list of strings
+    if not isinstance(metadata_types, list) or not all(isinstance(m, str) for m in metadata_types):
+        return response.status(400).json({
+            'success': False,
+            'comment': 'Invalid request, metadata_types must be a list of strings'
+        })
+        
+    ACCEPTED_METADATA_TYPES = ['attributes', 'tags', 'rdo']
+    for metadata_type in metadata_types:
+        if metadata_type not in ACCEPTED_METADATA_TYPES:
+            return response.status(400).json({
+                'success': False,
+                'comment': f'Invalid metadata type: {metadata_type}. Accepted types are: {ACCEPTED_METADATA_TYPES}'
+            })
     
     # Save the enriched ads to a file and return a presigned URL
     username = event.get('user', {}).get('username', None)
@@ -623,7 +709,7 @@ def get_batch_ads_presign(event, response: Response):
     
     if 'rdo' in metadata_types:
         batch_enricher.attach_rdo()
-        
+    
     enriched_ads = batch_enricher.to_dict()
     
     metadata.put_object(
@@ -796,9 +882,6 @@ def get_frames_presigned(event, response):
                                 type: string
                                 example: 'PATH_NOT_PROVIDED'
     """
-    # path = event['queryStringParameters'].get('path', None)
-    # Compute the path from the path parameters: {observer_id}/temp/{timestamp}.{ad_id}
-    print(event['pathParameters'])
     observer_id = event['pathParameters'].get('observer_id', None)
     timestamp = event['pathParameters'].get('timestamp', None)
     ad_id = event['pathParameters'].get('ad_id', None)
@@ -812,10 +895,9 @@ def get_frames_presigned(event, response):
     
     if not path.endswith('/'):
         path += '/'
+    
     # List the frames at the path
     frames = observations_sub_bucket.list_dir(path)
-    print(path)
-    # print(s3.list_dir(f'{observer_id}/temp'))
     frame_paths = [f'{frame}' for frame in frames]
     
     # Generate presigned URLs for each frame
@@ -1008,8 +1090,7 @@ def get_ads_stream_index(event, response):
         
         return {
             'success': True,
-            'presigned_url': presigned_url,
-            # 'ads': ads_passed_rdo_construction
+            'presigned_url': presigned_url
         }
     except Exception as e:
         return response.status(500).json({
