@@ -15,7 +15,7 @@ from routes import route
 from routes.ad_attributes import ad_attributes_repository
 from utils import Response, use
 from utils.opensearch import AdQuery
-from utils.opensearch.rdo_open_search import AdWithRDO, RdoIndexName, RdoOpenSearch
+from utils.opensearch.rdo_open_search import LATEST_READY_INDEX, AdWithRDO, RdoOpenSearch
 import utils.observations_sub_bucket as observations_sub_bucket
 import utils.metadata_sub_bucket as metadata
 from multiprocessing import Process, Pipe 
@@ -801,7 +801,7 @@ def get_stitching_frames_presigned(event, response):
     # frames = observations_sub_bucket.list_dir(path)
     # # print(s3.list_dir(f'{observer_id}/temp'))
     # frame_paths = [f'{frame}' for frame in frames]
-    frame_paths = get_stiched_frame_from_rdo(observer_id, timestamp, ad_id)
+    frame_paths = get_stitched_frame_from_rdo(observer_id, timestamp, ad_id)
     
     # Generate presigned URLs for each frame
     presigned_urls = []
@@ -1552,7 +1552,7 @@ def request_index(event, response):
     observer_id, timestamp, ad_id = event['ad_params']
     try:
         ad_with_rdo = AdWithRDO(observer_id, timestamp, ad_id)
-        open_search = RdoOpenSearch(index=RdoIndexName.PRODUCTION)
+        open_search = RdoOpenSearch(index=LATEST_READY_INDEX)
         open_search.put(ad_with_rdo, reduce=True)
         return {
             'success': True

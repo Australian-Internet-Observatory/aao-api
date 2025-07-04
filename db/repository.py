@@ -1,4 +1,4 @@
-from ast import List
+from typing import List
 from pydantic import BaseModel
 from db.clients.base_storage_client import BaseStorageClient
 from uuid import uuid4
@@ -97,9 +97,9 @@ class Repository():
             return default
         return [self._model.model_validate(item) for item in data]
 
-    def get_first(self, keys: dict, default = None) -> BaseModel | None:
+    def get_first(self, keys: dict, default = None, **kwargs) -> BaseModel | None:
         """Retrieve the first item from the storage by one or more keys."""
-        data = self._client.get(keys)
+        data = self._client.get(keys, **kwargs)
         if not data or len(data) == 0:
             return default
         return self._model.model_validate(data[0])

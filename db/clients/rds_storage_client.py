@@ -62,17 +62,18 @@ class RdsStorageClient(BaseStorageClient):
             self.engine.dispose()
         self.connected = False
 
-    def get(self, keys):
+    def get(self, keys, **kwargs):
         """Retrieve an object from the RDS table."""
         if not self.connected:
             raise ConnectionError("Not connected to the RDS database.")
         try:
             with self.session_maker() as session:
-                orm = session.query(self.base_orm).filter_by(**keys).all()
-                # if orm:
-                    # return orm.__dict__
+                orm = session.query(self.base_orm).filter_by(**keys)
                 # If only one object is expected, return the first one,
                 # otherwise return all matching objects
+                builder = kwargs.get('builder', None)
+                if builder:
+                    orm = builder(orm)
                 if orm:
                     return [obj.__dict__ for obj in orm]
                 return []
@@ -95,7 +96,6 @@ class RdsStorageClient(BaseStorageClient):
                         setattr(existing_orm, key, val)
                     session.commit()
                     return
-                # print(f"[RdsStorageClient] Creating new object with value: {value}")
                 # Otherwise, create a new object
                 orm = self.base_orm(**value)
                 session.add(orm)
@@ -113,7 +113,6 @@ class RdsStorageClient(BaseStorageClient):
         try:
             with self.session_maker() as session:
                 query = session.query(self.base_orm).filter_by(**keys)
-                # print(f"[RdsStorageClient] Executing query: {query}")
                 results = query.all()
                 if not results:
                     raise ValueError(f"No objects found with keys: {keys}")
@@ -129,7 +128,6 @@ class RdsStorageClient(BaseStorageClient):
             raise ConnectionError("Not connected to the RDS database.")
         try:
             with self.session_maker() as session:
-                # return [orm.id for orm in session.query(self.base_orm).all()]
                 primary_keys = self.base_orm.__table__.primary_key.columns.keys()
                 return [
                     {key: getattr(orm, key) for key in primary_keys}
