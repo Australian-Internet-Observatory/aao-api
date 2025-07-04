@@ -921,7 +921,7 @@ def get_frames_presigned(event, response):
         'presigned_urls': presigned_urls
     }
     
-def try_compute_ads_stream_index():
+def try_compute_ads_stream_index(prefer_cache=True):
     """Compute the ads stream index from the quick_access_cache.json file across
     all observers and save it to the ads_stream.json file in the root of the bucket.
     
@@ -936,7 +936,7 @@ def try_compute_ads_stream_index():
         now = datetime.datetime.now(tz=dateutil.tz.tzutc())
         cache_age = now - last_modified
         print(f'Found cache file. Cache age: {cache_age}')
-        if cache_age < datetime.timedelta(hours=1):
+        if cache_age < datetime.timedelta(hours=1) and prefer_cache:
             return observations_sub_bucket.read_json_file(INDEX_FILENAME)
 
     # List all observers

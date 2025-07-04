@@ -1,4 +1,4 @@
-from routes.ads import parse_ad_path
+from routes.ads import parse_ad_path, try_compute_ads_stream_index
 from utils import observations_sub_bucket
 from utils.indexer.registry import IndexRegistry
 from utils.indexer.indexer import Indexer
@@ -54,6 +54,11 @@ def list_ads_to_index():
     #     {"ad_id": "545ba836-81fe-4861-bc2e-6c8bfbe4e587", "timestamp": "1744851600298", "observer_id": "9e194bee-46ac-4fd9-ac6e-a11b4dcfc18c"},
     #     # Add more ads as needed
     # ]
+    
+    # Recompute the ads stream index to ensure we have the latest ads
+    logger.log("Recomputing the ads stream index to ensure we have the latest ads")
+    try_compute_ads_stream_index(prefer_cache=False)
+    logger.log("Ads stream index recomputed successfully")
     
     # 1. Read the ads from the ads_stream.json
     data = observations_sub_bucket.read_json_file("ads_stream.json")
