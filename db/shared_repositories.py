@@ -5,7 +5,6 @@ from models.attribute import AdAttribute, AdAttributeORM
 from models.tag import Tag, TagORM
 from models.user import User, UserORM
 
-
 users_repository = Repository(
     model=User,
     client=RdsStorageClient(

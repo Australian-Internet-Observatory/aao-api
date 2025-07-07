@@ -36,6 +36,19 @@ def get_user(username: str):
     response = execute_endpoint(f'/users/{username}', method='GET', auth=True)
     return response
 
+def test_list_users():
+    """Test listing all users via /users endpoint"""
+    response = execute_endpoint('/users', method='GET', auth=True)
+    assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
+    body = response['body']
+    assert isinstance(body, list), f"Expected list, got {type(body)}"
+    for user in body:
+        assert 'id' in user, "User ID is missing"
+        assert 'username' in user, "Username is missing"
+        assert 'full_name' in user, "Full name is missing"
+        assert 'enabled' in user, "Enabled status is missing"
+        assert 'role' in user, "Role is missing"
+
 def test_get_users():
     response = execute_endpoint('/users', method='GET', auth=True)
     assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"

@@ -69,18 +69,19 @@ def list_users(event):
                                 type: string
                                 example: 'UNAUTHORISED'
     """
+    def get_user_dict(user):
+        """Helper function to convert user entity to a dictionary."""
+        return {
+            "id": user.id,
+            "username": user.username,
+            "enabled": user.enabled,
+            "full_name": user.full_name,
+            "role": user.role,
+        }
+    
     with users_repository.create_session() as session:
         user_entities = session.list()
-        users = []
-        for user in user_entities:
-            user_dict = {
-                "id": user.id,
-                "username": user.username,
-                "enabled": user.enabled,
-                "full_name": user.full_name,
-                "role": user.role,
-        }
-        users.append(user_dict)
+        users = [get_user_dict(user) for user in user_entities]
     return users
 
 @route('users', 'POST')

@@ -100,7 +100,14 @@ class Repository():
     def list(self) -> list[BaseModel]:
         """Retrieve all items from the storage."""
         items = self._client.list()
-        return [self._model.model_validate(item['value']) for item in items]
+        # print(f"[Repository] list - found {items} items")
+        results = []
+        for item in items:
+            validated_item = self._model.model_validate(item['value'])
+            results.append(validated_item)
+        return results
+            # print(f"[Repository] list - validated item: {validated_item}")
+        # return [self._model.model_validate(item['value']) for item in items]
 
     def get(self, keys: dict, default = None) -> BaseModel | List | None:
         """Retrieve one or more items from the storage by one or more keys."""
