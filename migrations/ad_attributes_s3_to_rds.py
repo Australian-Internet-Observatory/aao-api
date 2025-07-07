@@ -8,14 +8,7 @@ import utils.metadata_sub_bucket as metadata
 import sys
 
 # Repository for ad attributes
-ad_attributes_repository = Repository(
-    model=AdAttribute,
-    keys=['observation_id', 'key'],
-    auto_generate_key=False,
-    client=RdsStorageClient(
-        base_orm=AdAttributeORM
-    )
-)
+from db.shared_repositories import ad_attributes_repository
 
 AD_ATTRIBUTES_PREFIX = 'ad-custom-attributes'
 
@@ -217,19 +210,20 @@ def migrate_single_ad_attributes(s3_key: str, entities: AdAttributeEntities) -> 
             return False
             
         # Insert each attribute
-        for attr in attributes:
-            try:
-                ad_attributes_repository.create_or_update(attr)
-            except Exception as e:
-                if 'duplicate key value violates unique constraint' in str(e):
-                    # Attribute already exists, try to update it
-                    try:
-                        ad_attributes_repository.create_or_update(attr)
-                    except Exception as update_e:
-                        print(f"Error updating attribute {attr.observation_id}:{attr.key}: {update_e}")
-                        continue
-                else:
-                    print(f"Error creating attribute {attr.observation_id}:{attr.key}: {e}")
+        with ad_attributes_repository.create_session() as session:
+            for attr in attributes:
+                try:
+                    session.create_or_update(attr)
+                except Exception as e:
+                    if 'duplicate key value violates unique constraint' in str(e):
+                        # Attribute already exists, try to update it
+                        try:
+                            session.create_or_update(attr)
+                        except Exception as update_e:
+                            print(f"Error updating attribute {attr.observation_id}:{attr.key}: {update_e}")
+                            continue
+                    else:
+                        print(f"Error creating attribute {attr.observation_id}:{attr.key}: {e}")
                     continue
         
         return True
@@ -285,13 +279,14 @@ def verify_migration():
     for observation_id in tqdm(observation_ids, desc="Verifying migration"):
         try:
             # Get attributes from RDS
-            rds_attributes = ad_attributes_repository.get({"observation_id": observation_id})
-            if not rds_attributes:
-                verification_results['missing_ads'] += 1
-                print(f"Missing in RDS: {observation_id}")
-                continue
-                
-            verification_results['verified_ads'] += 1
+            with ad_attributes_repository.create_session() as session:
+                rds_attributes = session.get({"observation_id": observation_id})
+                if not rds_attributes:
+                    verification_results['missing_ads'] += 1
+                    print(f"Missing in RDS: {observation_id}")
+                    continue
+                    
+                verification_results['verified_ads'] += 1
             
         except Exception as e:
             print(f"Error verifying {observation_id}: {e}")

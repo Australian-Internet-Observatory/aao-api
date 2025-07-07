@@ -104,19 +104,20 @@ def get_attributes(event, response):
     observation_id = f"{observer_id}_{timestamp}.{ad_id}"
     
     try:
-        attributes = ad_attributes_repository.get({"observation_id": observation_id})
-        if attributes is None:
-            attributes = []
-        
-        attributes_dict = {}
-        for attr in attributes:
-            attributes_dict[attr.key] = {
-                "value": attr.value,
-                "created_at": attr.created_at,
-                "created_by": attr.created_by,
-                "modified_at": attr.modified_at,
-                "modified_by": attr.modified_by
-            }
+        with ad_attributes_repository.create_session() as session:
+            attributes = session.get({"observation_id": observation_id})
+            if attributes is None:
+                attributes = []
+            
+            attributes_dict = {}
+            for attr in attributes:
+                attributes_dict[attr.key] = {
+                    "value": attr.value,
+                    "created_at": attr.created_at,
+                    "created_by": attr.created_by,
+                    "modified_at": attr.modified_at,
+                    "modified_by": attr.modified_by
+                }
         
         return {
             "ad_id": ad_id,
@@ -229,7 +230,8 @@ def add_properties(event, response):
             modified_at=current_time,
             modified_by=username
         )
-        ad_attributes_repository.create_or_update(new_attr)
+        with ad_attributes_repository.create_session() as session:
+            session.create_or_update(new_attr)
         
         return {
             "success": True,
@@ -312,26 +314,27 @@ def get_single_attribute(event, response):
     observation_id = f"{observer_id}_{timestamp}.{ad_id}"
     
     try:
-        attributes = ad_attributes_repository.get({
-            "observation_id": observation_id,
-            "key": attribute_key
-        })
-        
-        if attributes and len(attributes) > 0:
-            attr = attributes[0]
-            return {
-                "key": attr.key,
-                "value": attr.value,
-                "created_at": attr.created_at,
-                "created_by": attr.created_by,
-                "modified_at": attr.modified_at,
-                "modified_by": attr.modified_by
-            }
-        else:
-            return response.status(400).json({
-                "success": False,
-                "comment": "ATTRIBUTE_NOT_FOUND"
+        with ad_attributes_repository.create_session() as session:
+            attributes = session.get({
+                "observation_id": observation_id,
+                "key": attribute_key
             })
+            
+            if attributes and len(attributes) > 0:
+                attr = attributes[0]
+                return {
+                    "key": attr.key,
+                    "value": attr.value,
+                    "created_at": attr.created_at,
+                    "created_by": attr.created_by,
+                    "modified_at": attr.modified_at,
+                    "modified_by": attr.modified_by
+                }
+            else:
+                return response.status(400).json({
+                    "success": False,
+                    "comment": "ATTRIBUTE_NOT_FOUND"
+                })
     except Exception as e:
         return response.status(400).json({
             "success": False,
@@ -402,22 +405,23 @@ def delete_properties(event, response):
     observation_id = f"{observer_id}_{timestamp}.{ad_id}"
     
     try:
-        attributes = ad_attributes_repository.get({
-            "observation_id": observation_id,
-            "key": attribute_key
-        })
-        
-        if attributes and len(attributes) > 0:
-            attr = attributes[0]
-            ad_attributes_repository.delete(attr)
+        with ad_attributes_repository.create_session() as session:
+            attributes = session.get({
+                "observation_id": observation_id,
+                "key": attribute_key
+            })
             
-            return {
-                "success": True,
-                "comment": "ATTRIBUTE_DELETED"
-            }
-        else:
-            return response.status(400).json({
-                "success": False,
+            if attributes and len(attributes) > 0:
+                attr = attributes[0]
+                session.delete(attr)
+                
+                return {
+                    "success": True,
+                    "comment": "ATTRIBUTE_DELETED"
+                }
+            else:
+                return response.status(400).json({
+                    "success": False,
                 "comment": "ATTRIBUTE_NOT_FOUND"
             })
     except Exception as e:

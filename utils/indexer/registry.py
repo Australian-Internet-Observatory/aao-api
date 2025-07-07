@@ -21,13 +21,14 @@ class IndexRegistry:
         now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         self.name = f"{prefix}{now}"
         print(f"Starting index registry with name: {self.name}")
-        open_search_index_repository.create(
-            {
-                'name': self.name,
-                'created_at': int(datetime.now().timestamp()),
-                'status': 'created'
-            }
-        )
+        with open_search_index_repository.create_session() as session:
+            session.create(
+                {
+                    'name': self.name,
+                    'created_at': int(datetime.now().timestamp()),
+                    'status': 'created'
+                }
+            )
         return self
         
     def from_latest(self, status: str = 'ready'):
@@ -40,9 +41,10 @@ class IndexRegistry:
     
     def get_latest(self, status: str = 'ready') -> OpenSearchIndex:
         """Get the latest index registry."""
-        index = open_search_index_repository.get_first({
-            'status': status
-        }, builder=lambda x: x.order_by(OpenSearchIndexORM.created_at.desc()))
+        with open_search_index_repository.create_session() as session:
+            index = session.get_first({
+                'status': status
+            }, builder=lambda x: x.order_by(OpenSearchIndexORM.created_at.desc()))
         if not index:
             raise ValueError("No ready index registry found.")
         return index
@@ -51,34 +53,37 @@ class IndexRegistry:
         if not self.name:
             raise ValueError("Index registry has not been prepared. Call prepare() first.")
         print(f"Index registry {self.name} started.")
-        index = open_search_index_repository.get_first({
-            'name': self.name
-        })
-        if not index:
-            raise ValueError(f"Index registry {self.name} not found.")
-        index.status = 'in_progress'
-        open_search_index_repository.update(index)
+        with open_search_index_repository.create_session() as session:
+            index = session.get_first({
+                'name': self.name
+            })
+            if not index:
+                raise ValueError(f"Index registry {self.name} not found.")
+            index.status = 'in_progress'
+            session.update(index)
     
     def fail(self):
         if not self.name:
             raise ValueError("Index registry has not been prepared. Call prepare() first.")
         print(f"Index registry {self.name} failed.")
-        index = open_search_index_repository.get_first({
-            'name': self.name
-        })
-        if not index:
-            raise ValueError(f"Index registry {self.name} not found.")
-        index.status = 'failed'
-        open_search_index_repository.update(index)
+        with open_search_index_repository.create_session() as session:
+            index = session.get_first({
+                'name': self.name
+            })
+            if not index:
+                raise ValueError(f"Index registry {self.name} not found.")
+            index.status = 'failed'
+            session.update(index)
     
     def complete(self):
         if not self.name:
             raise ValueError("Index registry has not been prepared. Call prepare() first.")
         print(f"Index registry {self.name} completed.")
-        index = open_search_index_repository.get_first({
-            'name': self.name
-        })
-        if not index:
-            raise ValueError(f"Index registry {self.name} not found.")
-        index.status = 'ready'
-        open_search_index_repository.update(index)
+        with open_search_index_repository.create_session() as session:
+            index = session.get_first({
+                'name': self.name
+            })
+            if not index:
+                raise ValueError(f"Index registry {self.name} not found.")
+            index.status = 'ready'
+            session.update(index)

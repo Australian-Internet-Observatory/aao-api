@@ -1,7 +1,6 @@
-from db.clients.rds_storage_client import RdsStorageClient
-from db.repository import Repository
-from models.ad_tag import AdTag, AdTagORM
+from models.ad_tag import AdTag
 import pandas as pd
+from db.shared_repositories import applied_tags_repository
 
 mock_old_applied_tags = [
     {
@@ -81,13 +80,7 @@ observation_id_mappings = [
     # so they will be deleted (e.g., old_observation_id_4 and old_observation_id_5 from above example).
 ]
 
-applied_tags_repository = Repository(
-    model=AdTag,
-    keys=['observation_id', 'tag_id'],
-    client=RdsStorageClient(
-        base_orm=AdTagORM
-    )
-)
+
 
 def main(commit: bool = False):
     applied_tags = mock_old_applied_tags
@@ -136,7 +129,8 @@ def main(commit: bool = False):
             tag_id=row['tag_id']
         )
         try:
-            applied_tags_repository.delete(old_applied_tag)
+            with applied_tags_repository.create_session() as session:
+                session.delete(old_applied_tag)
         except ValueError as e:
             print(f"Error deleting applied tag {old_applied_tag}: {e}")
     
@@ -148,7 +142,8 @@ def main(commit: bool = False):
             tag_id=row['tag_id']
         )
         try:
-            applied_tags_repository.create(new_applied_tag)
+            with applied_tags_repository.create_session() as session:
+                session.create(new_applied_tag)
         except ValueError as e:
             print(f"Error creating applied tag {new_applied_tag}: {e}")
 

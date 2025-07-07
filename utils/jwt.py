@@ -2,9 +2,7 @@ import json
 import time
 import hashlib
 import base64
-from db.clients.rds_storage_client import RdsStorageClient
-from db.repository import Repository
-from models.user import User, UserORM
+from models.user import User
 from utils.hash_password import hash_password
 from configparser import ConfigParser
 
@@ -13,12 +11,7 @@ config.read('config.ini')
 
 SESSION_FOLDER_PREFIX = 'guest-sessions'
 
-users_repository = Repository(
-    model=User,
-    client=RdsStorageClient(
-        base_orm=UserORM
-    )
-)
+from db.shared_repositories import users_repository
 
 def get_user_data(username: str) -> dict:
     """
@@ -31,19 +24,20 @@ def get_user_data(username: str) -> dict:
         dict: The user data as a dictionary, or None if an error occurs.
     """
     try:
-        user = users_repository.get_first({'username': username})
-        if user is None:
-            return None
-        data = user.model_dump()
-        # Ensure the password is not included in the returned data
-        return {
-            'username': data['username'],
-            'full_name': data.get('full_name', ''),
-            'enabled': data.get('enabled', True),
-            'password': data.get('password', None),
-            'role': data.get('role', 'user'),
-            'token': data.get('current_token', None)
-        }
+        with users_repository.create_session() as session:
+            user = session.get_first({'username': username})
+            if user is None:
+                return None
+            data = user.model_dump()
+            # Ensure the password is not included in the returned data
+            return {
+                'username': data['username'],
+                'full_name': data.get('full_name', ''),
+                'enabled': data.get('enabled', True),
+                'password': data.get('password', None),
+                'role': data.get('role', 'user'),
+                'token': data.get('current_token', None)
+            }
     except Exception as e:
         return None
 
@@ -162,11 +156,12 @@ def create_session_token(username: str, password: str) -> str:
     token, payload = create_token(user_data)
     
     # Get the user data and update the current token
-    user = users_repository.get_first({'username': username})
-    if user is None:
-        raise Exception("User not found")
-    user.current_token = token
-    users_repository.update(user)
+    with users_repository.create_session() as session:
+        user = session.get_first({'username': username})
+        if user is None:
+            raise Exception("User not found")
+        user.current_token = token
+        session.update(user)
     
     return token
 
@@ -197,11 +192,12 @@ def refresh_session_token(token: str) -> str:
     token, payload = create_token(user_data)
     
     # Update the user's current token
-    user = users_repository.get_first({'username': username})
-    if user is None:
-        raise Exception("User not found")
-    user.current_token = token
-    users_repository.update(user)
+    with users_repository.create_session() as session:
+        user = session.get_first({'username': username})
+        if user is None:
+            raise Exception("User not found")
+        user.current_token = token
+        session.update(user)
     
     return token
 
@@ -223,13 +219,14 @@ def disable_session_token(token: str) -> bool:
     payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
     
     try:
-        user = users_repository.get_first({'username': payload['username']})
-        if user is None:
-            return False
-        # Update the user's current token to None
-        user.current_token = None
-        users_repository.update(user)
-        return True
+        with users_repository.create_session() as session:
+            user = session.get_first({'username': payload['username']})
+            if user is None:
+                return False
+            # Update the user's current token to None
+            user.current_token = None
+            session.update(user)
+            return True
     except Exception as e:
         return False
 
@@ -244,12 +241,13 @@ def disable_sessions_for_user(username: str) -> bool:
         bool: True if all sessions were successfully disabled, False otherwise.
     """
     try:
-        user = users_repository.get_first({'username': username})
-        if user is None:
-            return False
-        # Update the user's current token to None
-        user.current_token = None
-        users_repository.update(user)
+        with users_repository.create_session() as session:
+            user = session.get_first({'username': username})
+            if user is None:
+                return False
+            # Update the user's current token to None
+            user.current_token = None
+            session.update(user)
     except Exception as e:
         return False
     return True

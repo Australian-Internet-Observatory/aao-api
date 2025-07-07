@@ -93,20 +93,21 @@ class Enricher:
         observation_id = f"{self.observer_id}_{self.timestamp}.{self.ad_id}"
         try:
             # Get attributes from the repository
-            attributes = ad_attributes_repository.get({"observation_id": observation_id})
-            if attributes is None:
-                attributes = []
-            
-            # Convert to the expected format (key-value dictionary)
-            attributes_dict = {}
-            for attr in attributes:
-                attributes_dict[attr.key] = {
-                    "value": attr.value,
-                    "created_at": attr.created_at,
-                    "created_by": attr.created_by,
-                    "modified_at": attr.modified_at,
-                    "modified_by": attr.modified_by
-                }
+            with ad_attributes_repository.create_session() as session:
+                attributes = session.get({"observation_id": observation_id})
+                if attributes is None:
+                    attributes = []
+                
+                # Convert to the expected format (key-value dictionary)
+                attributes_dict = {}
+                for attr in attributes:
+                    attributes_dict[attr.key] = {
+                        "value": attr.value,
+                        "created_at": attr.created_at,
+                        "created_by": attr.created_by,
+                        "modified_at": attr.modified_at,
+                        "modified_by": attr.modified_by
+                    }
             
             self.attributes = attributes_dict
         except Exception as e:
@@ -118,10 +119,11 @@ class Enricher:
         """Attach tags to the ad."""
         # Fetch the tags for the ad
         try:
-            tags: list[AdTag] = ads_tags_repository.get({ "observation_id": self.ad_id })
-            tag_ids = [tag.tag_id for tag in tags]
-            
-            self.tags = tag_ids
+            with ads_tags_repository.create_session() as session:
+                tags: list[AdTag] = session.get({ "observation_id": self.ad_id })
+                tag_ids = [tag.tag_id for tag in tags]
+                
+                self.tags = tag_ids
         except Exception as e:
             print(f"Error fetching tags for {self.observer_id}/{self.timestamp}.{self.ad_id}: {e}")
             self.tags = []

@@ -1,17 +1,8 @@
 from base import execute_endpoint
-
-from db.clients.rds_storage_client import RdsStorageClient
-from db.repository import Repository
-from models.user import User, UserORM
 from utils.hash_password import hash_password
 
 # Need to access the database directly as without functional authentication, it is not possible to create users through the API (which needs authentication).
-users_repository = Repository(
-    model=User,
-    client=RdsStorageClient(
-        base_orm=UserORM
-    )
-)
+from db.shared_repositories import users_repository
 
 def create_test_user(username: str = 'testuser'):
     """
@@ -26,7 +17,8 @@ def create_test_user(username: str = 'testuser'):
         'enabled': True,
         'role': 'user'
     }
-    users_repository.create(test_user)
+    with users_repository.create_session() as session:
+        session.create(test_user)
 
 def delete_user(username: str):
     """
@@ -35,7 +27,8 @@ def delete_user(username: str):
     :param username: The username of the user to delete.
     :return: The response from the API call.
     """
-    users_repository.delete({'username': username})
+    with users_repository.create_session() as session:
+        session.delete({'username': username})
 
 def test_login_success():
     """Test successful login with valid credentials."""

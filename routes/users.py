@@ -1,11 +1,7 @@
-from datetime import datetime
-from db.clients.rds_storage_client import RdsStorageClient
-from db.repository import Repository
-from models.user import User, UserORM
 from routes import route
 from middlewares.authorise import Role, authorise
 from middlewares.authenticate import authenticate
-from utils import use, jwt
+from utils import use
 from utils.hash_password import hash_password
 from urllib.parse import unquote
 
@@ -13,12 +9,7 @@ from configparser import ConfigParser
 config = ConfigParser()
 config.read('config.ini')
 
-users_repository = Repository(
-    model=User,
-    client=RdsStorageClient(
-        base_orm=UserORM
-    )
-)
+from db.shared_repositories import users_repository
 
 @route('users', 'GET')
 @use(authenticate)
@@ -78,15 +69,16 @@ def list_users(event):
                                 type: string
                                 example: 'UNAUTHORISED'
     """
-    user_entities = users_repository.list()
-    users = []
-    for user in user_entities:
-        user_dict = {
-            "id": user.id,
-            "username": user.username,
-            "enabled": user.enabled,
-            "full_name": user.full_name,
-            "role": user.role,
+    with users_repository.create_session() as session:
+        user_entities = session.list()
+        users = []
+        for user in user_entities:
+            user_dict = {
+                "id": user.id,
+                "username": user.username,
+                "enabled": user.enabled,
+                "full_name": user.full_name,
+                "role": user.role,
         }
         users.append(user_dict)
     return users
@@ -166,17 +158,18 @@ def create_user(event, response):
     new_user = event['body']
     
     # Check if user already exists
-    if users_repository.get_first({'username': new_user['username']}) is not None:
-        return response.status(400).json({
-            "success": False,
-            "comment": "User already exists"
-        })
-    
-    # Hash the password
-    new_user['password'] = hash_password(new_user['password'])
-    
-    # Save the new user
-    users_repository.create(new_user)
+    with users_repository.create_session() as session:
+        if session.get_first({'username': new_user['username']}) is not None:
+            return response.status(400).json({
+                "success": False,
+                "comment": "User already exists"
+            })
+        
+        # Hash the password
+        new_user['password'] = hash_password(new_user['password'])
+        
+        # Save the new user
+        session.create(new_user)
     
     return response.status(201).json({
         "success": True,
@@ -267,45 +260,46 @@ def edit_user(event, response):
             "comment": "UNAUTHORIZED"
         })
     
-    user_entity = users_repository.get_first({'username': username})
-    if user_entity is None:
-        return response.status(400).json({
-            "success": False,
-            "comment": "User not found"
-        })
-    
-    old_data = user_entity.model_dump()
-    new_data = event['body']
-    new_data.pop('username', None)
-    
-    acceptable_fields = ['enabled', 'password', 'full_name', 'role']
-    
-    # Ensure that the fields are acceptable
-    for key in new_data:
-        if key not in acceptable_fields:
+    with users_repository.create_session() as session:
+        user_entity = session.get_first({'username': username})
+        if user_entity is None:
             return response.status(400).json({
                 "success": False,
-                "comment": f"Field '{key}' is not acceptable"
+                "comment": "User not found"
             })
-    
-    # Ensure the role is only updated by an admin
-    if 'role' in new_data and Role.parse(caller['role']) != Role.ADMIN:
-        return response.status(403).json({
-            "success": False,
-            "comment": "UNAUTHORIZED"
-        })
-    
-    # If the password is being updated, hash it
-    if 'password' in new_data:
-        new_data['password'] = hash_password(new_data['password'])
-    
-    # Update the user data
-    combined_data = {**old_data, **new_data}
-    users_repository.update(combined_data)
-    return {
-        "success": True,
-        "comment": "User updated successfully"
-    }
+        
+        old_data = user_entity.model_dump()
+        new_data = event['body']
+        new_data.pop('username', None)
+        
+        acceptable_fields = ['enabled', 'password', 'full_name', 'role']
+        
+        # Ensure that the fields are acceptable
+        for key in new_data:
+            if key not in acceptable_fields:
+                return response.status(400).json({
+                    "success": False,
+                    "comment": f"Field '{key}' is not acceptable"
+                })
+        
+        # Ensure the role is only updated by an admin
+        if 'role' in new_data and Role.parse(caller['role']) != Role.ADMIN:
+            return response.status(403).json({
+                "success": False,
+                "comment": "UNAUTHORIZED"
+            })
+        
+        # If the password is being updated, hash it
+        if 'password' in new_data:
+            new_data['password'] = hash_password(new_data['password'])
+        
+        # Update the user data
+        combined_data = {**old_data, **new_data}
+        session.update(combined_data)
+        return {
+            "success": True,
+            "comment": "User updated successfully"
+        }
 
 @route('users/self', 'GET')
 @use(authenticate)
@@ -350,11 +344,12 @@ def get_current_user(event, response):
                                 example: 'User not found'
     """
     try:
-        user_entity = users_repository.get_first({'username': event['user']['username']})
-        if user_entity is None:
-            raise Exception("User not found")
-        user_data = user_entity.model_dump()
-        return user_data
+        with users_repository.create_session() as session:
+            user_entity = session.get_first({'username': event['user']['username']})
+            if user_entity is None:
+                raise Exception("User not found")
+            user_data = user_entity.model_dump()
+            return user_data
     except Exception as e:
         return response.status(400).json({
             "success": False,
@@ -437,11 +432,12 @@ def get_user(event, response):
         })
     
     try:
-        user_entity = users_repository.get_first({'username': username})
-        if user_entity is None:
-            raise Exception("User not found")
-        user_data = user_entity.model_dump()
-        return user_data
+        with users_repository.create_session() as session:
+            user_entity = session.get_first({'username': username})
+            if user_entity is None:
+                raise Exception("User not found")
+            user_data = user_entity.model_dump()
+            return user_data
     except Exception as e:
         return response.status(400).json({
             "success": False,
@@ -509,7 +505,8 @@ def delete_user(event, response):
     username = unquote(username)
     
     try:
-        users_repository.delete({'username': username})
+        with users_repository.create_session() as session:
+            session.delete({'username': username})
     except Exception as e:
         return response.status(400).json({
             "success": False,

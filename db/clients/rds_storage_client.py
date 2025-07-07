@@ -22,7 +22,7 @@ def get_db_session(db_url: str):
     """Establishes a connection to the PostgreSQL database and returns a session and engine."""
     try:
         engine = create_engine(db_url)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        SessionLocal = sessionmaker(bind=engine)
         return SessionLocal, engine
     except Exception as e:
         print(f"Could not connect to the database: {e}")

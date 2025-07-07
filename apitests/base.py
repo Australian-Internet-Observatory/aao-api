@@ -1,13 +1,12 @@
 # Base file for testing the API endpoints.
 import json
 from typing import Literal
-from db.clients.rds_storage_client import RdsStorageClient
-from db.repository import Repository
 from lambda_function import lambda_handler as local_handler
 from configparser import ConfigParser
 
-from models.user import User, UserORM
 from utils.hash_password import hash_password
+# Need to access the database directly as without functional authentication, it is not possible to create users through the API (which needs authentication).
+from db.shared_repositories import users_repository
 
 config = ConfigParser()
 config.read('config.ini')
@@ -15,13 +14,7 @@ config.read('config.ini')
 username = config['TEST']['USERNAME']
 password = config['TEST']['PASSWORD']
 
-# Need to access the database directly as without functional authentication, it is not possible to create users through the API (which needs authentication).
-users_repository = Repository(
-    model=User,
-    client=RdsStorageClient(
-        base_orm=UserORM
-    )
-)
+
 
 def create_test_user():
     """
@@ -36,7 +29,9 @@ def create_test_user():
         'enabled': True,
         'role': 'admin'
     }
-    users_repository.create(test_user)
+    with users_repository.create_session() as session:
+        session.create(test_user)
+    # users_repository.create(test_user)
 
 def ensure_test_user_exists():
     """
@@ -46,9 +41,10 @@ def ensure_test_user_exists():
     """
     try:
         # Attempt to get the user
-        user = users_repository.get_first({'username': username})
-        if user is None:
-            create_test_user()
+        with users_repository.create_session() as session:
+            user = session.get_first({'username': username})
+            if user is None:
+                create_test_user()
     except Exception as e:
         print(f"Error ensuring test user exists: {e}")
 

@@ -31,7 +31,8 @@ class Indexer:
             timestamp=int(timestamp)
         )
         try:
-            observations_repository.create(observation)
+            with observations_repository.create_session() as session:
+                session.create(observation)
         except Exception as e:
             print(f"Error indexing ad {ad_id}: {str(e)}")
             if not self.skip_on_error:

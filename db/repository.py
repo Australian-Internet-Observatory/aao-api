@@ -16,7 +16,8 @@ class Repository():
                  client: BaseStorageClient = BaseStorageClient, 
                  keys: list[str] = ['id'],
                  auto_generate_key: bool = True,
-                 verbose: bool = False
+                 verbose: bool = False,
+                 auto_connect: bool = False
                 ):
         """Initialize the repository with a model and a storage client.
         
@@ -32,7 +33,18 @@ class Repository():
         self._keys = keys
         self._auto_generate_key = auto_generate_key
         self._verbose = verbose
-        client.connect()
+        if auto_connect:
+            self.connect()
+
+    def connect(self) -> None:
+        """Connect to the storage client."""
+        if self._verbose: print("[Repository] connect")
+        self._client.connect()
+    
+    def disconnect(self) -> None:
+        """Disconnect from the storage client."""
+        if self._verbose: print("[Repository] disconnect")
+        self._client.disconnect()
 
     def create(self, item: dict | BaseModel) -> dict:
         """Add a new item to the storage, if it doesn't exist"""
@@ -114,3 +126,50 @@ class Repository():
         elif isinstance(item, frozenset):
             item_keys = str(item)
         self._client.delete(item_keys)
+        
+    def create_session(self) -> 'RepositorySession':
+        """Create a session for the repository."""
+        return RepositorySession(self)
+        
+class RepositorySession():
+    def __init__(self, repository: 'Repository'):
+        """Initialize the repository session."""
+        self._repository = repository
+
+    def __enter__(self):
+        """Enter the repository session."""
+        self._repository.connect()
+        return self._repository
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Exit the repository session."""
+        self._repository.disconnect()
+        
+    # Session methods are the same as the repository methods
+    def create(self, item: dict | BaseModel) -> dict:
+        """Add a new item to the storage, if it doesn't exist."""
+        return self._repository.create(item)
+    
+    def update(self, item: dict | BaseModel) -> None:
+        """Update an existing item in the storage."""
+        return self._repository.update(item)
+    
+    def create_or_update(self, item: dict | BaseModel) -> None:
+        """Create or update an item in the storage."""
+        return self._repository.create_or_update(item)
+    
+    def list(self) -> list[BaseModel]:
+        """Retrieve all items from the storage."""
+        return self._repository.list()
+    
+    def get(self, keys: dict, default = None) -> BaseModel | List | None:
+        """Retrieve one or more items from the storage by one or more keys."""
+        return self._repository.get(keys, default)
+    
+    def get_first(self, keys: dict, default = None, **kwargs) -> BaseModel | None:
+        """Retrieve the first item from the storage by one or more keys."""
+        return self._repository.get_first(keys, default, **kwargs)
+    
+    def delete(self, item: BaseModel | dict) -> None:
+        """Delete an item from the storage."""
+        return self._repository.delete(item)

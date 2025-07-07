@@ -2,17 +2,10 @@ import json
 from uuid import uuid4
 
 from tqdm import tqdm
-from db.clients.rds_storage_client import RdsStorageClient
-from db.repository import Repository
-from models.user import User, UserORM
+from models.user import User
 import utils.metadata_sub_bucket as metadata
 
-users_repository = Repository(
-    model=User,
-    client=RdsStorageClient(
-        base_orm=UserORM
-    )
-)
+from db.shared_repositories import users_repository
 
 USERS_FOLDER_PREFIX = 'dashboard-users'
 
@@ -60,7 +53,8 @@ def main():
             **user,
         )
         try:
-            users_repository.create(user_entity)
+            with users_repository.create_session() as session:
+                session.create(user_entity)
         except Exception as e:
             if 'duplicate key value violates unique constraint' in str(e):
                 continue
