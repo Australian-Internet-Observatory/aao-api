@@ -224,14 +224,14 @@ def add_properties(event, response):
         new_attr = AdAttribute(
             observation_id=observation_id,
             key=key,
-            value=attribute['value'],
+            value=str(attribute['value']),
             created_at=current_time,
             created_by=username,
             modified_at=current_time,
             modified_by=username
         )
-        with ad_attributes_repository.create_session() as session:
-            session.create_or_update(new_attr)
+        with ad_attributes_repository.create_session() as repository_session:
+            repository_session.create_or_update(new_attr)
         
         return {
             "success": True,
@@ -240,7 +240,7 @@ def add_properties(event, response):
     except Exception as e:
         return response.status(400).json({
             "success": False,
-            "comment": "ERROR_SETTING_ATTRIBUTE"
+            "comment": "ERROR_SETTING_ATTRIBUTE: " + str(e)
         })
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/attributes/{attribute_key}', 'GET')
@@ -315,21 +315,12 @@ def get_single_attribute(event, response):
     
     try:
         with ad_attributes_repository.create_session() as session:
-            attributes = session.get({
+            attr = session.get_first({
                 "observation_id": observation_id,
                 "key": attribute_key
             })
-            
-            if attributes and len(attributes) > 0:
-                attr = attributes[0]
-                return {
-                    "key": attr.key,
-                    "value": attr.value,
-                    "created_at": attr.created_at,
-                    "created_by": attr.created_by,
-                    "modified_at": attr.modified_at,
-                    "modified_by": attr.modified_by
-                }
+            if attr:
+                return attr.model_dump()
             else:
                 return response.status(400).json({
                     "success": False,
@@ -406,15 +397,12 @@ def delete_properties(event, response):
     
     try:
         with ad_attributes_repository.create_session() as session:
-            attributes = session.get({
+            attr = session.get_first({
                 "observation_id": observation_id,
                 "key": attribute_key
             })
-            
-            if attributes and len(attributes) > 0:
-                attr = attributes[0]
+            if attr:
                 session.delete(attr)
-                
                 return {
                     "success": True,
                     "comment": "ATTRIBUTE_DELETED"
@@ -422,8 +410,8 @@ def delete_properties(event, response):
             else:
                 return response.status(400).json({
                     "success": False,
-                "comment": "ATTRIBUTE_NOT_FOUND"
-            })
+                    "comment": "ATTRIBUTE_NOT_FOUND"
+                })
     except Exception as e:
         return response.status(400).json({
             "success": False,
