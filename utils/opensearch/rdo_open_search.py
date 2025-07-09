@@ -112,6 +112,12 @@ class RdoOpenSearch:
     def put(self, ad_with_rdo: AdWithRDO, reduce=True):
         # Attempt to reduce the RDO content if a reducer is provided
         body = ad_with_rdo.fetch_rdo()
+        
+        # If the body contains an `is_user_disabled` field, delete the document instead of
+        # indexing it
+        if isinstance(body, dict) and body.get('is_user_disabled'):
+            return self.delete(ad_with_rdo.open_search_id)
+        
         if reduce:
             version = 1
             # Attempt to get the version in the body
