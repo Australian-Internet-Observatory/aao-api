@@ -8,7 +8,7 @@ ZipFileName="lambda-deployment-package.zip"
 mkdir -p $TempDir
 
 # Copy all files to the temporary directory, excluding the following folders
-rsync -av --progress . $TempDir --exclude ".git" --exclude ".github" --exclude ".vscode" --exclude "temp" --exclude "__pycache__" --exclude ".venv" --exclude "docs" --exclude "README.md" --exclude "swagger.yaml" --exclude "tests.py" --exclude "scripts" --exclude "$ZipFileName" --exclude "requirements.txt" --exclude "images"
+rsync -av --progress . $TempDir --exclude ".git" --exclude ".github" --exclude ".vscode" --exclude "temp" --exclude "__pycache__" --exclude ".venv" --exclude "docs" --exclude "README.md" --exclude "swagger.yaml" --exclude "tests.py" --exclude "scripts" --exclude "$ZipFileName" --exclude "requirements.txt" --exclude "images" --exclude "apitests" --exclude "unittests"
 
 # Copy the dependencies to the temporary directory
 echo "Copying the dependencies to the $TempDir directory"
@@ -22,6 +22,12 @@ pip install pydantic --platform manylinux2014_x86_64 --target=$TempDir --impleme
 # Install psycopg2-binary for x86_64 architecture
 echo "Installing psycopg2-binary for x86_64 architecture"
 pip install psycopg2-binary --platform manylinux2014_x86_64 --target=$TempDir --implementation cp --only-binary=:all: --upgrade --python-version 3.12
+
+# Delete the existing zip file if it exists
+if [ -f $ZipFileName ]; then
+    echo "Deleting existing $ZipFileName file"
+    rm $ZipFileName
+fi
 
 # Zip the contents of the temporary directory (at root)
 echo "Zipping the contents of the $TempDir directory"

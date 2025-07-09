@@ -355,18 +355,19 @@ def get_access_cache(event, response):
         })
     if observer_id.endswith('/'):
         observer_id = observer_id[:-1]
-    observer_data = observations_sub_bucket.read_json_file(f'{observer_id}/quick_access_cache.json')
-    if observer_data is None:
-        return response.status(404).json({
-            'success': False,
-            'comment': 'NO_CACHE_FOUND_FOR_OBSERVER'
-        })
+
+    activation_code = observer_id[-7:-1]
     
-    ads_passed_rdo_constructions = observer_data.get('ads_passed_rdo_construction', [])
+    # Query by observer_id
+    ad_query = AdQuery()
+    ads_for_observer = ad_query.query_all({
+        'method': 'OBSERVER_ID_CONTAINS',
+        'args': [activation_code],
+    })
+    
     return {
         'success': True,
-        'data': observer_data,
-        'ads': ads_passed_rdo_constructions
+        'ads': ads_for_observer
     }
 
 
