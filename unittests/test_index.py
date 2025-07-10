@@ -1,6 +1,6 @@
-from utils.opensearch.rdo_open_search import AdWithRDO, RdoIndexName, RdoOpenSearch
+from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
 
-opensearch = RdoOpenSearch(index=RdoIndexName.TEST)
+opensearch = RdoOpenSearch(index='test-rdo-index')
 
 def test_create_index_v2():
     v2_ad = AdWithRDO(

@@ -2,20 +2,16 @@ import json
 import time
 import hashlib
 import base64
-import utils.metadata_sub_bucket as metadata
+from models.user import User
+from utils.hash_password import hash_password
 from configparser import ConfigParser
-
-class User:
-    enabled: bool
-    password: str
-    username: str
-    full_name: str
 
 config = ConfigParser()
 config.read('config.ini')
 
-USERS_FOLDER_PREFIX = 'dashboard-users'
 SESSION_FOLDER_PREFIX = 'guest-sessions'
+
+from db.shared_repositories import users_repository
 
 def get_user_data(username: str) -> dict:
     """
@@ -28,10 +24,21 @@ def get_user_data(username: str) -> dict:
         dict: The user data as a dictionary, or None if an error occurs.
     """
     try:
-        data = metadata.get_object(f'{USERS_FOLDER_PREFIX}/{username}/credentials.json').decode('utf-8')
-        return json.loads(data)
+        with users_repository.create_session() as session:
+            user = session.get_first({'username': username})
+            if user is None:
+                return None
+            data = user.model_dump()
+            # Ensure the password is not included in the returned data
+            return {
+                'username': data['username'],
+                'full_name': data.get('full_name', ''),
+                'enabled': data.get('enabled', True),
+                'password': data.get('password', None),
+                'role': data.get('role', 'user'),
+                'token': data.get('current_token', None)
+            }
     except Exception as e:
-        print(e)
         return None
 
 def create_token(user_data: User, expire: int = None) -> tuple[str, dict]:
@@ -56,10 +63,12 @@ def create_token(user_data: User, expire: int = None) -> tuple[str, dict]:
         "typ": "JWT"
     }
     header_base64 = base64.b64encode(json.dumps(header).encode('utf-8')).decode('utf-8')
-    # Copy all fields (except the password) from the user data to the payload
+    # Copy all fields (except the password and token) from the user data to the payload
     copied_data = dict(user_data)
     if 'password' in copied_data:
         copied_data.pop('password')
+    if 'token' in copied_data:
+        copied_data.pop('token')
     payload = {
         "exp": expiration_time,
         **copied_data
@@ -108,16 +117,17 @@ def verify_token(token: str) -> bool:
         return False
     payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
     exp = payload['exp']
-    # Look up the session object in S3, depending if it is a user or guest session
-    if 'role' in payload and payload['role'] == 'guest':
-        session_object_path = f'{SESSION_FOLDER_PREFIX}/{payload["username"]}.json'
-    else:
-        session_object_path = f'{USERS_FOLDER_PREFIX}/{payload["username"]}/sessions/{exp}_{token}.json'
     
-    try:
-        metadata.get_object(session_object_path)
-    except Exception as e:
+    # If the role is 'guest' - allow
+    # TODO: Verify guest sessions
+    if 'role' in payload and payload['role'] == 'guest':
+        return True
+    
+    # Ensure the token exists
+    user_data = get_user_data(payload['username'])
+    if user_data is None or user_data.get('token') != token:
         return False
+    
     # Ensure the token has not expired
     current_time = time.time()
     if current_time > exp:
@@ -139,21 +149,20 @@ def create_session_token(username: str, password: str) -> str:
         Exception: If the credentials are invalid.
     """
     user_data = get_user_data(username)
-    hashed_password = hashlib.md5(password.encode('utf-8')).hexdigest()
+    hashed_password = hash_password(password)
     if user_data is None or user_data['password'] != hashed_password:
         raise Exception("INVALID_CREDENTIALS")
-    # Disable the most recent JSON web token for the user (delete the session object)
-    # to prevent multiple logins
-    most_recent_session_path = get_most_recent_session_path(username)
-    if most_recent_session_path is not None:
-        _, prev_token = most_recent_session_path.split('/')[-1].split('_')
-        prev_token = '.'.join(prev_token.split('.')[:-1])
-        disable_session_token(prev_token)
+    
     token, payload = create_token(user_data)
-    # Save the token to the user's session (for verification later)
-    exp = payload['exp']
-    session_object_path = f'{USERS_FOLDER_PREFIX}/{username}/sessions/{exp}_{token}.json'
-    metadata.put_object(session_object_path, json.dumps(payload).encode('utf-8'))
+    
+    # Get the user data and update the current token
+    with users_repository.create_session() as session:
+        user = session.get_first({'username': username})
+        if user is None:
+            raise Exception("User not found")
+        user.current_token = token
+        session.update(user)
+    
     return token
 
 def refresh_session_token(token: str) -> str:
@@ -167,19 +176,29 @@ def refresh_session_token(token: str) -> str:
     """
     parts = token.split('.')
     if len(parts) != 3:
-        return None
+        raise Exception("INVALID_TOKEN")
     header_base64, payload_base64, signature = parts
     payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
     # Find the user data from the payload
     username = payload['username']
     user_data = get_user_data(username)
+    
     if user_data is None:
-        return None
+        raise Exception("INVALID_CREDENTIALS")
+    # Ensure the token is valid
+    if user_data.get('token') != token:
+        raise Exception("INVALID_TOKEN")
+    
     token, payload = create_token(user_data)
-    # Save the token to the user's session (for verification later)
-    exp = payload['exp']
-    session_object_path = f'{USERS_FOLDER_PREFIX}/{username}/sessions/{exp}_{token}.json'
-    metadata.put_object(session_object_path, json.dumps(payload).encode('utf-8'))
+    
+    # Update the user's current token
+    with users_repository.create_session() as session:
+        user = session.get_first({'username': username})
+        if user is None:
+            raise Exception("User not found")
+        user.current_token = token
+        session.update(user)
+    
     return token
 
 def disable_session_token(token: str) -> bool:
@@ -198,11 +217,16 @@ def disable_session_token(token: str) -> bool:
         return False
     header_base64, payload_base64, signature = parts
     payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
-    exp = payload['exp']
-    session_object_path = f'{USERS_FOLDER_PREFIX}/{payload["username"]}/sessions/{exp}_{token}.json'
+    
     try:
-        metadata.delete_object(session_object_path)
-        return True
+        with users_repository.create_session() as session:
+            user = session.get_first({'username': payload['username']})
+            if user is None:
+                return False
+            # Update the user's current token to None
+            user.current_token = None
+            session.update(user)
+            return True
     except Exception as e:
         return False
 
@@ -216,37 +240,17 @@ def disable_sessions_for_user(username: str) -> bool:
     Returns:
         bool: True if all sessions were successfully disabled, False otherwise.
     """
-    sessions = metadata.list_objects(f'{USERS_FOLDER_PREFIX}/{username}/sessions/')
-    for session in sessions:
-        try:
-            metadata.delete_object(session)
-        except Exception as e:
-            return False
+    try:
+        with users_repository.create_session() as session:
+            user = session.get_first({'username': username})
+            if user is None:
+                return False
+            # Update the user's current token to None
+            user.current_token = None
+            session.update(user)
+    except Exception as e:
+        return False
     return True
-
-def get_most_recent_session_path(username: str) -> dict:
-    """
-    Retrieve the path of the most recent session for the given username.
-
-    Args:
-        username (str): The username of the user.
-
-    Returns:
-        dict: The path of the most recent session, or None if no sessions exist.
-    """
-    user_data = get_user_data(username)
-    if user_data is None:
-        return None
-    sessions = metadata.list_objects(f'{USERS_FOLDER_PREFIX}/{username}/sessions/')
-    if not sessions:
-        return None
-    most_recent_session = sessions[0]
-    for session in sessions:
-        session_data = metadata.head_object(session)
-        most_recent_session_data = metadata.head_object(most_recent_session)
-        if session_data['LastModified'] > most_recent_session_data['LastModified']:
-            most_recent_session = session
-    return most_recent_session
 
 if __name__ == "__main__":
     token = create_session_token('dantran', 'dantran')

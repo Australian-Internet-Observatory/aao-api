@@ -1,6 +1,7 @@
-from routes.ads import parse_ad_path
+from routes.ads import parse_ad_path, try_compute_ads_stream_index
 from utils import observations_sub_bucket
-from utils.opensearch.rdo_open_search import AdWithRDO, RdoIndexName, RdoOpenSearch
+from utils.indexer.registry import IndexRegistry
+from utils.indexer.indexer import Indexer
 from tqdm import tqdm
 from datetime import datetime
 import multiprocessing
@@ -27,9 +28,6 @@ class Logger:
 logger = Logger(verbose=True)
 
 def list_failed_ads(log_file_path):
-    # This function should get the list of ads that failed to index from the log
-    # file as a list of dictionaries with ad_id, timestamp, and observer_id
-    
     # Get all available ads
     available_ads = list_ads_to_index()
     ads_lookup = {ad['ad_id']: ad for ad in available_ads}
@@ -57,6 +55,11 @@ def list_ads_to_index():
     #     # Add more ads as needed
     # ]
     
+    # Recompute the ads stream index to ensure we have the latest ads
+    logger.log("Recomputing the ads stream index to ensure we have the latest ads")
+    try_compute_ads_stream_index(prefer_cache=False)
+    logger.log("Ads stream index recomputed successfully")
+    
     # 1. Read the ads from the ads_stream.json
     data = observations_sub_bucket.read_json_file("ads_stream.json")
     ads = list(set(data.get("ads_passed_rdo_construction", [])))
@@ -66,36 +69,27 @@ def list_ads_to_index():
     
     return ads_to_index
 
-
-def put_index(open_search: RdoOpenSearch, observer_id, timestamp, ad_id, skip_on_error=False):
-    ad_with_rdo = AdWithRDO(observer_id, timestamp, ad_id)
-    # open_search = RdoOpenSearch(index=RdoIndexName.STAGING)
-    try:
-        open_search.put(ad_with_rdo)
-    except Exception as e:
-        if skip_on_error:
-            logger.log(f"Error indexing ad {ad_id}: {e}")
-        else:
-            raise e
-
+def put_index(observer_id, timestamp, ad_id, skip_on_error=False, index_name=None):
+    indexer = Indexer(stage='staging', skip_on_error=skip_on_error, index_name=index_name)
+    indexer.put_index_open_search(observer_id, timestamp, ad_id)
+    
 def put_index_star(args):
     """Wrapper function to unpack arguments for multiprocessing."""
     return put_index(*args)
 
-def index_list(ads, max_workers=50):
+def index_list(ads, max_workers=50, index_name=None):
     """Index a list of ads."""
-    open_search = RdoOpenSearch(index=RdoIndexName.STAGING)
     # If 1 worker, do it sequentially
     if max_workers == 1:
         for ad in tqdm(ads, desc="Indexing ads", unit="ad"):
-            put_index(open_search, ad["observer_id"], ad["timestamp"], ad["ad_id"], skip_on_error=True)
+            put_index(ad["observer_id"], ad["timestamp"], ad["ad_id"], skip_on_error=True, index_name=index_name)
         return
 
     # Otherwise, use multiprocessing
     print(f"Using {max_workers} workers to index ads")
     with multiprocessing.Pool(processes=max_workers) as pool:
         # Create a list of arguments for each ad
-        args = [(open_search, ad["observer_id"], ad["timestamp"], ad["ad_id"], True) for ad in ads]
+        args = [(ad["observer_id"], ad["timestamp"], ad["ad_id"], True, index_name) for ad in ads]
         
         # Use tqdm to show progress
         for _ in tqdm(
@@ -106,37 +100,56 @@ def index_list(ads, max_workers=50):
             ):
             pass
 
-def index_all_ads():
-    # put_index("447745c4-2cbc-4c7b-872e-454d953ce65a", "1743664069050", "6e49c7a8-df11-4f5d-8696-d48498ebee64")
+def index_all_ads(index_name):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     logger = Logger(f"ads_indexing_{timestamp}.log", verbose=True)
     logger.log("Starting the indexing process")
     
-    # 1. Get the list of ads to be indexed as a list of dictionaries { ad_id, timestamp, observer_id }
+    # Get the list of ads to be indexed
     ads_to_index = list_ads_to_index()
     assert len(ads_to_index) > 0, "No ads to index"
     logger.log(f"Found {len(ads_to_index)} ads to index")
     
-    # 2. Put the ads in the index
-    index_list(ads_to_index)
+    # Put the ads in the index
+    index_list(ads_to_index, index_name=index_name)
         
-    logger.log("Indexing process completed")
+    logger.log("Indexing process completed at " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     logger.close()
 
 def index_failed_ads(log_file_path):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     logger = Logger(f"ads_indexing_failed_{timestamp}.log", verbose=True)
     logger.log("Starting the indexing of failed ads")
-    # 1. Get the list of failed ads from the log file
+    # Get the list of failed ads from the log file
     failed_ads = list_failed_ads(log_file_path)
     assert len(failed_ads) > 0, "No failed ads to index"
     logger.log(f"Found {len(failed_ads)} failed ads to index")
     
-    # 2. Put the failed ads in the index
+    # Put the failed ads in the index
     index_list(failed_ads)
     
     logger.log("Indexing of failed ads completed")
     logger.close()
 
+
 if __name__ == "__main__":
-    index_all_ads()
+    registry = IndexRegistry()
+    
+    # Use prepare if want to create a new index
+    # registry.prepare(prefix='reduced-rdo-index_')
+    
+    # Use from_latest if want to update the latest index
+    registry.from_latest(status='ready')
+    registry.start()
+    
+    try:
+        index_all_ads(index_name=registry.name)
+    except Exception as e:
+        print(f"Error during indexing: {e}")
+        registry.fail()
+        exit(1)
+    
+    registry.complete()
+    
+    latest_index = registry.get_latest()
+    print(f"Completed indexing: {latest_index.name}")

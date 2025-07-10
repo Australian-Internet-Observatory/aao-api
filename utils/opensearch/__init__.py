@@ -1,6 +1,6 @@
 import json
 from utils.opensearch.boolean_query_converter import convert_to_opensearch_format
-from utils.opensearch.rdo_open_search import RdoIndexName, RdoOpenSearch, get_hit_source_id
+from utils.opensearch.rdo_open_search import LATEST_READY_INDEX, RdoOpenSearch, get_hit_source_id
 
 def create_query(query_dict: dict, page_size: int = 1000):
     """
@@ -35,7 +35,7 @@ def create_query(query_dict: dict, page_size: int = 1000):
 
 def execute_open_search_query(
                                 query: dict, 
-                                index: RdoIndexName = RdoIndexName.PRODUCTION
+                                index: str | None = LATEST_READY_INDEX
                             ):
     """
     Execute a query against the OpenSearch database.
@@ -79,7 +79,8 @@ class AdQuery:
         """
         
         # Use OpenSearch Point-In-Time (PIT) to manage query sessions
-        rdo_search = RdoOpenSearch(index=RdoIndexName.PRODUCTION)
+        print("Creating a new query session from", LATEST_READY_INDEX)
+        rdo_search = RdoOpenSearch(index=LATEST_READY_INDEX)
         pit_id = rdo_search.create_pit()
         return pit_id
     

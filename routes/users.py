@@ -1,25 +1,15 @@
-from datetime import datetime
 from routes import route
 from middlewares.authorise import Role, authorise
 from middlewares.authenticate import authenticate
-from utils import use, jwt
-import hashlib
-import boto3
-import json
-import utils.metadata_sub_bucket as metadata
+from utils import use
+from utils.hash_password import hash_password
 from urllib.parse import unquote
 
 from configparser import ConfigParser
 config = ConfigParser()
 config.read('config.ini')
 
-session = boto3.Session(
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY'],
-    region_name='ap-southeast-2'
-)
-
-USERS_FOLDER_PREFIX = 'dashboard-users'
+from db.shared_repositories import users_repository
 
 @route('users', 'GET')
 @use(authenticate)
@@ -79,12 +69,19 @@ def list_users(event):
                                 type: string
                                 example: 'UNAUTHORISED'
     """
-    user_keys = metadata.list_objects(f'{USERS_FOLDER_PREFIX}/')
-    keys = [key for key in user_keys if key.endswith('credentials.json')]
-    users = []
-    for key in keys:
-        user_data = json.loads(metadata.get_object(key).decode('utf-8'))
-        users.append(user_data)
+    def get_user_dict(user):
+        """Helper function to convert user entity to a dictionary."""
+        return {
+            "id": user.id,
+            "username": user.username,
+            "enabled": user.enabled,
+            "full_name": user.full_name,
+            "role": user.role,
+        }
+    
+    with users_repository.create_session() as session:
+        user_entities = session.list()
+        users = [get_user_dict(user) for user in user_entities]
     return users
 
 @route('users', 'POST')
@@ -160,23 +157,20 @@ def create_user(event, response):
                                 example: 'UNAUTHORISED'
     """
     new_user = event['body']
-    user_path = f'{USERS_FOLDER_PREFIX}/{new_user["username"]}/credentials.json'
     
     # Check if user already exists
-    try:
-        metadata.head_object(user_path)
-        return response.status(400).json({
-            "success": False,
-            "comment": "User already exists"
-        })
-    except Exception as e:
-        print(e)
-    
-    # Hash the password
-    new_user['password'] = hashlib.md5(new_user['password'].encode('utf-8')).hexdigest()
-    
-    # Save the new user
-    metadata.put_object(user_path, json.dumps(new_user).encode('utf-8'))
+    with users_repository.create_session() as session:
+        if session.get_first({'username': new_user['username']}) is not None:
+            return response.status(400).json({
+                "success": False,
+                "comment": "User already exists"
+            })
+        
+        # Hash the password
+        new_user['password'] = hash_password(new_user['password'])
+        
+        # Save the new user
+        session.create(new_user)
     
     return response.status(201).json({
         "success": True,
@@ -267,46 +261,46 @@ def edit_user(event, response):
             "comment": "UNAUTHORIZED"
         })
     
-    user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
-    try:
-        old_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
-    except Exception as e:
-        return response.status(400).json({
-            "success": False,
-            "comment": "User not found"
-        })
-    
-    new_data = event['body']
-    new_data.pop('username', None)
-    
-    acceptable_fields = ['enabled', 'password', 'full_name', 'role']
-    
-    # Ensure that the fields are acceptable
-    for key in new_data:
-        if key not in acceptable_fields:
+    with users_repository.create_session() as session:
+        user_entity = session.get_first({'username': username})
+        if user_entity is None:
             return response.status(400).json({
                 "success": False,
-                "comment": f"Field '{key}' is not acceptable"
+                "comment": "User not found"
             })
-    
-    # Ensure the role is only updated by an admin
-    if 'role' in new_data and Role.parse(caller['role']) != Role.ADMIN:
-        return response.status(403).json({
-            "success": False,
-            "comment": "UNAUTHORIZED"
-        })
-    
-    # If the password is being updated, hash it
-    if 'password' in new_data:
-        new_data['password'] = hashlib.md5(new_data['password'].encode('utf-8')).hexdigest()
-    
-    # Update the user data
-    combined_data = {**old_data, **new_data}
-    metadata.put_object(user_path, json.dumps(combined_data).encode('utf-8'))
-    return {
-        "success": True,
-        "comment": "User updated successfully"
-    }
+        
+        old_data = user_entity.model_dump()
+        new_data = event['body']
+        new_data.pop('username', None)
+        
+        acceptable_fields = ['enabled', 'password', 'full_name', 'role']
+        
+        # Ensure that the fields are acceptable
+        for key in new_data:
+            if key not in acceptable_fields:
+                return response.status(400).json({
+                    "success": False,
+                    "comment": f"Field '{key}' is not acceptable"
+                })
+        
+        # Ensure the role is only updated by an admin
+        if 'role' in new_data and Role.parse(caller['role']) != Role.ADMIN:
+            return response.status(403).json({
+                "success": False,
+                "comment": "UNAUTHORIZED"
+            })
+        
+        # If the password is being updated, hash it
+        if 'password' in new_data:
+            new_data['password'] = hash_password(new_data['password'])
+        
+        # Update the user data
+        combined_data = {**old_data, **new_data}
+        session.update(combined_data)
+        return {
+            "success": True,
+            "comment": "User updated successfully"
+        }
 
 @route('users/self', 'GET')
 @use(authenticate)
@@ -350,11 +344,13 @@ def get_current_user(event, response):
                                 type: string
                                 example: 'User not found'
     """
-    caller = event['user']
-    user_path = f'{USERS_FOLDER_PREFIX}/{caller["username"]}/credentials.json'
     try:
-        user_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
-        return user_data
+        with users_repository.create_session() as session:
+            user_entity = session.get_first({'username': event['user']['username']})
+            if user_entity is None:
+                raise Exception("User not found")
+            user_data = user_entity.model_dump()
+            return user_data
     except Exception as e:
         return response.status(400).json({
             "success": False,
@@ -436,10 +432,13 @@ def get_user(event, response):
             "comment": "UNAUTHORIZED"
         })
     
-    user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
     try:
-        user_data = json.loads(metadata.get_object(user_path).decode('utf-8'))
-        return user_data
+        with users_repository.create_session() as session:
+            user_entity = session.get_first({'username': username})
+            if user_entity is None:
+                raise Exception("User not found")
+            user_data = user_entity.model_dump()
+            return user_data
     except Exception as e:
         return response.status(400).json({
             "success": False,
@@ -505,11 +504,11 @@ def delete_user(event, response):
     username = event['pathParameters']['username']
     # Decode the URL-encoded username
     username = unquote(username)
-    user_path = f'{USERS_FOLDER_PREFIX}/{username}/credentials.json'
+    
     try:
-        metadata.delete_object(user_path)
+        with users_repository.create_session() as session:
+            session.delete({'username': username})
     except Exception as e:
-        print(e)
         return response.status(400).json({
             "success": False,
             "comment": "User not found"
@@ -517,5 +516,5 @@ def delete_user(event, response):
     
     return response.status(200).json({
         "success": True,
-        "comment": "User deleted successfully"
+        "comment": f"User {username} deleted successfully"
     })

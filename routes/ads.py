@@ -1,45 +1,55 @@
-from dataclasses import dataclass
+import concurrent.futures
 import datetime
-from enum import Enum
 import hashlib
 import json
-import math
 
 import dateutil.tz
-from db.clients.s3_storage_client import S3StorageClient
-from db.repository import Repository
+from tqdm import tqdm
+
+from db.clients.rds_storage_client import RdsStorageClient
 from enricher import RdoBuilder
 from middlewares.authenticate import authenticate
-from models.ad import Ad
-from models.ad_tag import AdTag
+from models.ad_tag import AdTag, AdTagORM
+from models.attribute import AdAttributeORM
 from routes import route
-from routes.ad_attributes import AD_ATTRIBUTES_PREFIX
-import utils.observations_sub_bucket as observations_sub_bucket
+from routes.ad_attributes import ad_attributes_repository
 from utils import Response, use
-# from utils.query import AdQuery
 from utils.opensearch import AdQuery
-from utils.opensearch.rdo_open_search import AdWithRDO, RdoIndexName, RdoOpenSearch
+from utils.opensearch.rdo_open_search import LATEST_READY_INDEX, AdWithRDO, RdoOpenSearch
+import utils.observations_sub_bucket as observations_sub_bucket
 import utils.metadata_sub_bucket as metadata
 from multiprocessing import Process, Pipe 
 from .tags import ads_tags_repository
-import concurrent.futures
-
-# try:
-#     EXISTING_ATTRIBUTE_OBJECTS = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
-# except Exception as e:
-#     EXISTING_ATTRIBUTE_OBJECTS = None
 
 def parse_ad_path(ad_path):
-    """Parse the ad path into its components: observer_id, timestamp, and ad_id."""
+    """Parse the ad path into its components: observer_id, timestamp, and ad_id.
+    
+    Args:
+        ad_path (str): The full ad path in format "observer_id/temp/timestamp.ad_id"
+        
+    Returns:
+        dict: Dictionary containing observer_id, timestamp, and ad_id
+        
+    Raises:
+        ValueError: If ad_path is None or has invalid format
+    """
     if ad_path is None:
         raise ValueError("ad_path is None")
-    [observer_id, _, rest] = [part for part in ad_path.split('/') if part]
-    observer_id = observer_id
-    parts = rest.split('.')
-    if len(parts) < 2:
-        raise ValueError(f"Invalid ad path: {ad_path}")
-    ad_id = parts[-1]
-    timestamp = ".".join(parts[:-1])
+    
+    parts = [part for part in ad_path.split('/') if part]
+    if len(parts) < 3:
+        raise ValueError(f"Invalid ad path format: {ad_path}")
+    
+    observer_id = parts[0]
+    rest = parts[2]  # Skip the 'temp' part
+    
+    ad_parts = rest.split('.')
+    if len(ad_parts) < 2:
+        raise ValueError(f"Invalid ad path format: {ad_path}")
+    
+    ad_id = ad_parts[-1]
+    timestamp = ".".join(ad_parts[:-1])
+    
     return {
         'observer_id': observer_id,
         'timestamp': timestamp,
@@ -48,16 +58,22 @@ def parse_ad_path(ad_path):
 
 class Enricher:
     """Handles the enrichment of ads with metadata and other relevant information."""
+    
     def __init__(self, ad=None):
+        """Initialize the enricher with ad information.
+        
+        Args:
+            ad (dict, optional): Dictionary containing observer_id, timestamp, and ad_id
+        """
         if ad is not None:
-            self.observer_id = ad.get("observer_id", None)
-            self.timestamp = ad.get("timestamp", None)
-            self.ad_id = ad.get("ad_id", None)
+            self.observer_id = ad.get("observer_id")
+            self.timestamp = ad.get("timestamp")
+            self.ad_id = ad.get("ad_id")
         
         if hasattr(self, 'observer_id') and self.observer_id is not None:
             self.observer = observations_sub_bucket.Observer(self.observer_id)
         else:
-            raise ValueError("observer_id is None")
+            raise ValueError("observer_id is required")
 
         self.execution_time_ms = 0
     
@@ -73,28 +89,41 @@ class Enricher:
     
     @timeit
     def attach_attributes(self, include=None):
-        """Fetch the attributes metadata from """
-        ad_attributes_path = f'{AD_ATTRIBUTES_PREFIX}/{self.observer_id}_{self.timestamp}.{self.ad_id}.json'
+        """Fetch the attributes metadata from the repository"""
+        observation_id = f"{self.observer_id}_{self.timestamp}.{self.ad_id}"
         try:
-            # Ignore the ad attributes if the file does not exist
-            if include is not None and ad_attributes_path not in include:
-                raise ValueError(f"Key {ad_attributes_path} not in include list")
-            ad_attributes_data = json.loads(metadata.get_object(ad_attributes_path, include=include).decode('utf-8'))
-            self.attributes = ad_attributes_data
+            # Get attributes from the repository
+            with ad_attributes_repository.create_session() as session:
+                attributes = session.get({"observation_id": observation_id})
+                if attributes is None:
+                    attributes = []
+                
+                # Convert to the expected format (key-value dictionary)
+                attributes_dict = {}
+                for attr in attributes:
+                    attributes_dict[attr.key] = {
+                        "value": attr.value,
+                        "created_at": attr.created_at,
+                        "created_by": attr.created_by,
+                        "modified_at": attr.modified_at,
+                        "modified_by": attr.modified_by
+                    }
+            
+            self.attributes = attributes_dict
         except Exception as e:
+            print(f"Error fetching attributes for {observation_id}: {e}")
             self.attributes = {}
         return self
     
-    def attach_tags(self, include=None):
+    def attach_tags(self):
         """Attach tags to the ad."""
         # Fetch the tags for the ad
         try:
-            ad_key = f"{self.observer_id}_{self.timestamp}.{self.ad_id}"
-            if include is not None and ad_key not in include:
-                raise ValueError(f"Key {ad_key} not in include list")
-            tags = ads_tags_repository.get(ad_key, AdTag(id=ad_key, tags=[]))
-            print(f"Tags for {ad_key}: {tags}")
-            self.tags = tags.tags
+            with ads_tags_repository.create_session() as session:
+                tags: list[AdTag] = session.get({ "observation_id": self.ad_id })
+                tag_ids = [tag.tag_id for tag in tags]
+                
+                self.tags = tag_ids
         except Exception as e:
             print(f"Error fetching tags for {self.observer_id}/{self.timestamp}.{self.ad_id}: {e}")
             self.tags = []
@@ -130,7 +159,18 @@ class Enricher:
         return data
 
 class BatchEnricher:
-    def __init__(self, ads:list[dict]=[], max_workers=128, parallel=False):
+    """Handles batch enrichment of multiple ads with metadata and other relevant information."""
+    
+    def __init__(self, ads: list[dict] = None, max_workers=128, parallel=False):
+        """Initialize the batch enricher.
+        
+        Args:
+            ads (list[dict], optional): List of ad dictionaries to enrich
+            max_workers (int): Maximum number of worker processes for parallel processing
+            parallel (bool): Whether to use parallel processing
+        """
+        if ads is None:
+            ads = []
         self.parallel = parallel
         self.enrichers = [Enricher(ad) for ad in ads]
         self.max_workers = min(max_workers, len(self.enrichers))
@@ -197,17 +237,50 @@ class BatchEnricher:
         return self
         
     def attach_attributes(self):
-        existing_attribute_paths = set(metadata.list_objects(AD_ATTRIBUTES_PREFIX))
-        enricher_target = lambda enricher: enricher.attach_attributes(include=existing_attribute_paths)
-        # chunk_target = lambda chunk, conn: self._attach_chunk(enricher_target, chunk, conn, include=include)
-        return self.attach_enrichment(enricher_target)
+        """Batch attach attributes to all enrichers using RDS client directly."""
+        rds_client: RdsStorageClient = ad_attributes_repository._client
+        rds_client.connect()
+        
+        observation_ids = [enricher.ad_id for enricher in self.enrichers]
+        results = {}
+        with rds_client.session_maker() as session:
+            query = session.query(AdAttributeORM).filter(AdAttributeORM.observation_id.in_(observation_ids)).all()
+            print(f"[BatchEnricher] Found {len(query)} ads with attributes for {len(observation_ids)} observations.")
+            for result in query:
+                observation_id = result.observation_id
+                if observation_id not in results:
+                    results[observation_id] = {}
+                results[observation_id][result.key] = {
+                    "value": result.value,
+                    "created_at": result.created_at,
+                    "created_by": result.created_by,
+                    "modified_at": result.modified_at,
+                    "modified_by": result.modified_by
+                }
+        
+        for enricher in tqdm(self.enrichers):
+            enricher.attributes = results.get(enricher.ad_id, {})
+        return self
     
     def attach_tags(self):
-        existing_tags = ads_tags_repository.list()
-        existing_tags = [f"{tag.id}" for tag in existing_tags]
-        print(f"Existing tags: {existing_tags}")
-        enricher_target = lambda enricher: enricher.attach_tags(include=existing_tags)
-        return self.attach_enrichment(enricher_target)
+        """Batch attach tags to all enrichers using RDS client directly."""
+        rds_client: RdsStorageClient = ads_tags_repository._client
+        rds_client.connect()
+        
+        observations = [enricher.ad_id for enricher in self.enrichers]
+        results = {}
+        with rds_client.session_maker() as session:
+            query = session.query(AdTagORM).filter(AdTagORM.observation_id.in_(observations)).all()
+            print(f"[BatchEnricher] Found {len(query)} ads with tags for {len(observations)} observations.")
+            for result in query:
+                observation_id = result.observation_id
+                if observation_id not in results:
+                    results[observation_id] = []
+                results[observation_id].append(result.tag_id)
+        
+        for enricher in tqdm(self.enrichers):
+            enricher.tags = results.get(enricher.ad_id, [])
+        return self
     
     def attach_rdo(self):
         enricher_target = lambda enricher: enricher.attach_rdo()
@@ -282,32 +355,32 @@ def get_access_cache(event, response):
         })
     if observer_id.endswith('/'):
         observer_id = observer_id[:-1]
-    observer_data = observations_sub_bucket.read_json_file(f'{observer_id}/quick_access_cache.json')
-    if observer_data is None:
-        return response.status(404).json({
-            'success': False,
-            'comment': 'NO_CACHE_FOUND_FOR_OBSERVER'
-        })
+
+    activation_code = observer_id[-7:-1]
     
-    ads_passed_rdo_constructions = observer_data.get('ads_passed_rdo_construction', [])
-    # expanded = [Enricher(ad_path).attach_attributes().to_dict() for ad_path in ad_paths]
+    # Query by observer_id
+    ad_query = AdQuery()
+    ads_for_observer = ad_query.query_all({
+        'method': 'OBSERVER_ID_CONTAINS',
+        'args': [activation_code],
+    })
+    
     return {
         'success': True,
-        'data': observer_data,
-        'ads': ads_passed_rdo_constructions,
-        # 'expanded': expanded
+        'ads': ads_for_observer
     }
 
 
-def get_stiched_frame_from_rdo(observer_id, timestamp, ad_id):
+def get_stitched_frame_from_rdo(observer_id, timestamp, ad_id):
+    """Get the stitched frames from RDO for a specific ad."""
     observer = observations_sub_bucket.Observer(observer_id)
     rdo = observer.get_pre_constructed_rdo(timestamp, ad_id)
     if rdo is None:
         raise Exception(f"RDO not found for {observer_id}/{timestamp}.{ad_id}")
     media: list[str] = rdo['media']
     # temp-v2 is the new version of stitching
-    stiched_frames = [frame for frame in media if 'stitching' in frame or 'temp-v2' in frame]
-    return stiched_frames
+    stitched_frames = [frame for frame in media if 'stitching' in frame or 'temp-v2' in frame]
+    return stitched_frames
 
 
 @route('ads/{observer_id}/recent', 'GET')
@@ -574,6 +647,21 @@ def get_batch_ads_presign(event, response: Response):
             'success': False,
             'comment': 'Invalid request, missing ads or metadata_types'
         })
+        
+    # Ensure metadata_types is a list of strings
+    if not isinstance(metadata_types, list) or not all(isinstance(m, str) for m in metadata_types):
+        return response.status(400).json({
+            'success': False,
+            'comment': 'Invalid request, metadata_types must be a list of strings'
+        })
+        
+    ACCEPTED_METADATA_TYPES = ['attributes', 'tags', 'rdo']
+    for metadata_type in metadata_types:
+        if metadata_type not in ACCEPTED_METADATA_TYPES:
+            return response.status(400).json({
+                'success': False,
+                'comment': f'Invalid metadata type: {metadata_type}. Accepted types are: {ACCEPTED_METADATA_TYPES}'
+            })
     
     # Save the enriched ads to a file and return a presigned URL
     username = event.get('user', {}).get('username', None)
@@ -624,7 +712,7 @@ def get_batch_ads_presign(event, response: Response):
     
     if 'rdo' in metadata_types:
         batch_enricher.attach_rdo()
-        
+    
     enriched_ads = batch_enricher.to_dict()
     
     metadata.put_object(
@@ -716,7 +804,7 @@ def get_stitching_frames_presigned(event, response):
     # frames = observations_sub_bucket.list_dir(path)
     # # print(s3.list_dir(f'{observer_id}/temp'))
     # frame_paths = [f'{frame}' for frame in frames]
-    frame_paths = get_stiched_frame_from_rdo(observer_id, timestamp, ad_id)
+    frame_paths = get_stitched_frame_from_rdo(observer_id, timestamp, ad_id)
     
     # Generate presigned URLs for each frame
     presigned_urls = []
@@ -797,9 +885,6 @@ def get_frames_presigned(event, response):
                                 type: string
                                 example: 'PATH_NOT_PROVIDED'
     """
-    # path = event['queryStringParameters'].get('path', None)
-    # Compute the path from the path parameters: {observer_id}/temp/{timestamp}.{ad_id}
-    print(event['pathParameters'])
     observer_id = event['pathParameters'].get('observer_id', None)
     timestamp = event['pathParameters'].get('timestamp', None)
     ad_id = event['pathParameters'].get('ad_id', None)
@@ -813,10 +898,9 @@ def get_frames_presigned(event, response):
     
     if not path.endswith('/'):
         path += '/'
+    
     # List the frames at the path
     frames = observations_sub_bucket.list_dir(path)
-    print(path)
-    # print(s3.list_dir(f'{observer_id}/temp'))
     frame_paths = [f'{frame}' for frame in frames]
     
     # Generate presigned URLs for each frame
@@ -840,7 +924,7 @@ def get_frames_presigned(event, response):
         'presigned_urls': presigned_urls
     }
     
-def try_compute_ads_stream_index():
+def try_compute_ads_stream_index(prefer_cache=True):
     """Compute the ads stream index from the quick_access_cache.json file across
     all observers and save it to the ads_stream.json file in the root of the bucket.
     
@@ -855,7 +939,7 @@ def try_compute_ads_stream_index():
         now = datetime.datetime.now(tz=dateutil.tz.tzutc())
         cache_age = now - last_modified
         print(f'Found cache file. Cache age: {cache_age}')
-        if cache_age < datetime.timedelta(hours=1):
+        if cache_age < datetime.timedelta(hours=1) and prefer_cache:
             return observations_sub_bucket.read_json_file(INDEX_FILENAME)
 
     # List all observers
@@ -1009,8 +1093,7 @@ def get_ads_stream_index(event, response):
         
         return {
             'success': True,
-            'presigned_url': presigned_url,
-            # 'ads': ads_passed_rdo_construction
+            'presigned_url': presigned_url
         }
     except Exception as e:
         return response.status(500).json({
@@ -1472,7 +1555,7 @@ def request_index(event, response):
     observer_id, timestamp, ad_id = event['ad_params']
     try:
         ad_with_rdo = AdWithRDO(observer_id, timestamp, ad_id)
-        open_search = RdoOpenSearch(index=RdoIndexName.PRODUCTION)
+        open_search = RdoOpenSearch(index=LATEST_READY_INDEX)
         open_search.put(ad_with_rdo, reduce=True)
         return {
             'success': True

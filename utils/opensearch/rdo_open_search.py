@@ -1,14 +1,11 @@
 from configparser import ConfigParser
 from dataclasses import dataclass, field
-from enum import Enum
-import json
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from utils import observations_sub_bucket
 from requests_aws4auth import AWS4Auth
 import boto3
-import botocore
-import time
 
+from utils.indexer.registry import IndexRegistry
 from utils.reduce_rdo.reduce_rdo import RdoReducer
 
 config = ConfigParser()
@@ -68,41 +65,25 @@ class AdWithRDO:
                     current_level = current_level.get(key, {})
                 del current_level[field[-1]]
             except KeyError:
-                # If the key doesn't exist, we can ignore it
-                print(f"Key {field} not found in rdo_content")
                 pass
             
-        # # Clean the content: enrichment.comparisons, media, observation.whitespace_derived_signature
-        # del self.rdo_content["enrichment"]['meta_adlibrary_scrape']["comparisons"]
-        # del self.rdo_content["enrichment"]['ccl']
-        # del self.rdo_content["enrichment"]['media']
-        # del self.rdo_content["media"]
-        # del self.rdo_content["observation"]["whitespace_derived_signature"]
         return self.rdo_content
 
-class RdoIndexName(Enum):
-    TEST = 'test-rdo-index'
-    PRODUCTION = 'reduced-rdo-index'
-    STAGING = 'reduced-rdo-index-v20250606'
+LATEST_READY_INDEX = IndexRegistry().get_latest(status='ready').name
 
-# RDO_INDEX = 'ads-rdo-index'
-# RDO_INDEX = 'rdo-index'
 class RdoOpenSearch:
-    def __init__(self, index : RdoIndexName | None = RdoIndexName.PRODUCTION):
-        self.index = index.value if index is not None else None
+    def __init__(self, index: str | None = LATEST_READY_INDEX):
+        self.index = index
         self.client = client
     
     def create_pit(self):
         # Create a Point In Time (PIT) for the index
-        try:
-            response = self.client.create_pit(index=self.index, params={
-                "keep_alive": "5m"  # Keep the PIT alive for 5 minutes
-            })
-            print(f"Created PIT: {response}")
-            return response['pit_id']
-        except Exception as e:
-            print(f"Failed to create PIT: {e}")
-            return None
+        response = self.client.create_pit(index=self.index, params={
+            "keep_alive": "5m"
+        })
+        print(f"Created PIT: {response}")
+        return response['pit_id']
+
     
     def create_index(self):
         # Create the index with the specified mapping if it does not exist
@@ -120,17 +101,23 @@ class RdoOpenSearch:
     
     def search(self, query):
         return self.client.search(index=self.index, body=query, params={
-            "timeout": 300 # up to 5 minute / query instead of 10 seconds
+            "timeout": 300
         })
     
     def get(self, id):
         return self.client.get(index=self.index, id=id, params={
-            "timeout": 300 # up to 5 minute / query instead of 10 seconds
+            "timeout": 300
         })
     
     def put(self, ad_with_rdo: AdWithRDO, reduce=True):
         # Attempt to reduce the RDO content if a reducer is provided
         body = ad_with_rdo.fetch_rdo()
+        
+        # If the body contains an `is_user_disabled` field, delete the document instead of
+        # indexing it
+        if isinstance(body, dict) and body.get('is_user_disabled'):
+            return self.delete(ad_with_rdo.open_search_id)
+        
         if reduce:
             version = 1
             # Attempt to get the version in the body
@@ -144,7 +131,7 @@ class RdoOpenSearch:
     
     def delete(self, id):
         return self.client.delete(index=self.index, id=id, params={
-            "timeout": 300 # up to 5 minute / query instead of 10 seconds
+            "timeout": 300
         })
 
 def get_hit_source_id(hit):
@@ -153,26 +140,3 @@ def get_hit_source_id(hit):
     observer = source.get("observer")
     observation = source.get("observation")
     return f"{observer['uuid']}/temp/{observation['uuid']}"
-
-if __name__ == "__main__":
-    rdo_search = RdoOpenSearch()
-    query = {
-        "size": 10000,
-        "query": {
-            "wildcard": {
-                "observation.uuid": "*47e7d7a6*"
-            }
-        }
-    }
-    results = rdo_search.search(query)
-    hit = results["hits"]["hits"][0]
-    print(get_hit_source_id(hit))
-    # print(json.dumps(hit['_source']['observation'], indent=4))
-    hits = results["hits"]["hits"]
-    took = results["took"]
-    print(f"Query took {took}ms")
-    print(f"Found {len(hits)} hits")
-    # print([hit.get("_source").get("observer") for hit in hits])
-    # print([get_hit_source_id(hit) for hit in hits])
-    # print(rdo_search.search(query))
-    # print(rdo_search.search({"query": {"match_all": {}}}))

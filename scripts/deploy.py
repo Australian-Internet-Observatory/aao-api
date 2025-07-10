@@ -1,5 +1,8 @@
 import json
 import boto3
+import os
+import sys
+from datetime import datetime
 
 from configparser import ConfigParser
 config = ConfigParser()
@@ -11,26 +14,72 @@ session = boto3.Session(
 )
 
 lambda_client = session.client('lambda', region_name=config['AWS']['REGION'])
+s3_client = session.client('s3', region_name=config['AWS']['REGION'])
 
 zip_file = config['DEPLOYMENT']['ZIP_FILE']
 function_name = config['DEPLOYMENT']['LAMBDA_FUNCTION_NAME']
+deployment_bucket = config['DEPLOYMENT']['DEPLOYMENT_BUCKET']
+
+# Get stage (deployment folder) from command line argument or use default
+# TODO: Consider making "dev" the default deployment folder
+if len(sys.argv) < 2:
+    stage = "prod"
+    print(f"No stage specified, using default: {stage}")
+else:
+    stage = sys.argv[1]
+
+def upload_to_s3(file_path, bucket, key):
+    """Upload a file to S3 and return the S3 URL."""
+    try:
+        print(f'Uploading {file_path} to s3://{bucket}/{key}')
+        s3_client.upload_file(file_path, bucket, key)
+        print(f'Successfully uploaded to S3')
+        return f's3://{bucket}/{key}'
+    except Exception as e:
+        print(f'Error uploading to S3: {str(e)}')
+        raise
 
 def deploy_lambda():
-    with open(zip_file, 'rb') as f:
-        zipped_code = f.read()
-        size = len(zipped_code)
-        print(f'Zip file size: {size / (1024 * 1024):.2f} MB')
-    print(f'Updating {function_name} with {zip_file}')
-    response = lambda_client.update_function_code(
-        FunctionName=function_name,
-        ZipFile=zipped_code,
-        Publish=True
-    )
-    if response['ResponseMetadata']['HTTPStatusCode'] == 200:
-        print(f'{function_name} updated successfully')
-    else:
-        print(f'Error updating {function_name}')
-        print(json.dumps(response, indent=2))
-    # print(json.dumps(response, indent=2))
+    """Deploy the Lambda function using the specified zip file.
+    
+    This function uploads the zip file to S3 and updates the Lambda function to use the code from the S3 bucket.
+    """
+    # Check if zip file exists
+    if not os.path.exists(zip_file):
+        print(f'Error: {zip_file} does not exist')
+        return
+    
+    # Get file size
+    file_size = os.path.getsize(zip_file)
+    print(f'Zip file size: {file_size / (1024 * 1024):.2f} MB')
+    print(f'Deployment folder: {stage}')
+    
+    # Generate S3 key with timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    s3_key = f'{stage}/{function_name}_{timestamp}.zip'
+    
+    try:
+        # Upload to S3
+        s3_url = upload_to_s3(zip_file, deployment_bucket, s3_key)
+        
+        # Update Lambda function using S3 URL
+        print(f'Updating {function_name} with S3 package: {s3_url}')
+        response = lambda_client.update_function_code(
+            FunctionName=function_name,
+            S3Bucket=deployment_bucket,
+            S3Key=s3_key,
+            Publish=True
+        )
+        
+        if response['ResponseMetadata']['HTTPStatusCode'] == 200:
+            print(f'{function_name} updated successfully')
+            print(f'Function ARN: {response.get("FunctionArn", "N/A")}')
+            print(f'Version: {response.get("Version", "N/A")}')
+        else:
+            print(f'Error updating {function_name}')
+            print(json.dumps(response, indent=2))
+            
+    except Exception as e:
+        print(f'Deployment failed: {str(e)}')
     
 deploy_lambda()
