@@ -7,9 +7,11 @@ from utils.hash_password import hash_password
 from configparser import ConfigParser
 
 config = ConfigParser()
-config.read('config.ini')
+config.read("config.ini")
 
-SESSION_FOLDER_PREFIX = 'guest-sessions'
+USERS_FOLDER_PREFIX = "dashboard-users"
+SESSION_FOLDER_PREFIX = "guest-sessions"
+JWT_SECRET = config["JWT"]["SECRET"]
 
 from db.shared_repositories import users_repository
 
@@ -41,6 +43,7 @@ def get_user_data(username: str) -> dict:
     except Exception as e:
         return None
 
+
 def create_token(user_data: User, expire: int = None) -> tuple[str, dict]:
     """
     Create a JSON Web Token (JWT) for the given user data, and return the token and its payload.
@@ -55,28 +58,24 @@ def create_token(user_data: User, expire: int = None) -> tuple[str, dict]:
     """
     current_time = time.time()
     if expire is None:
-        expiration_time = current_time + config.getint('JWT', 'EXPIRATION')
+        expiration_time = current_time + config.getint("JWT", "EXPIRATION")
     else:
         expiration_time = current_time + expire
-    header = {
-        "alg": "HS256",
-        "typ": "JWT"
-    }
-    header_base64 = base64.b64encode(json.dumps(header).encode('utf-8')).decode('utf-8')
-    # Copy all fields (except the password and token) from the user data to the payload
+    header = {"alg": "HS256", "typ": "JWT"}
+    header_base64 = base64.b64encode(json.dumps(header).encode("utf-8")).decode("utf-8")
+    # Copy all fields (except the password) from the user data to the payload
     copied_data = dict(user_data)
-    if 'password' in copied_data:
-        copied_data.pop('password')
-    if 'token' in copied_data:
-        copied_data.pop('token')
-    payload = {
-        "exp": expiration_time,
-        **copied_data
-    }
-    payload_base64 = base64.b64encode(json.dumps(payload).encode('utf-8')).decode('utf-8')
-    secret = config['JWT']['SECRET']
-    signature = hashlib.sha256(f'{header_base64}.{payload_base64}.{secret}'.encode('utf-8')).hexdigest()
-    return f'{header_base64}.{payload_base64}.{signature}', payload
+    if "password" in copied_data:
+        copied_data.pop("password")
+    payload = {"exp": expiration_time, **copied_data}
+    payload_base64 = base64.b64encode(json.dumps(payload).encode("utf-8")).decode(
+        "utf-8"
+    )
+    secret = config["JWT"]["SECRET"]
+    signature = hashlib.sha256(
+        f"{header_base64}.{payload_base64}.{secret}".encode("utf-8")
+    ).hexdigest()
+    return f"{header_base64}.{payload_base64}.{signature}", payload
 
 def decode_token(token: str) -> dict:
     """
@@ -88,12 +87,13 @@ def decode_token(token: str) -> dict:
     Returns:
         dict: The payload of the JWT.
     """
-    parts = token.split('.')
+    parts = token.split(".")
     if len(parts) != 3:
         return None
     header_base64, payload_base64, signature = parts
-    payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
+    payload = json.loads(base64.b64decode(payload_base64).decode("utf-8"))
     return payload
+
 
 def verify_token(token: str) -> bool:
     """
@@ -105,27 +105,17 @@ def verify_token(token: str) -> bool:
     Returns:
         bool: True if the token is valid, False otherwise.
     """
-    parts = token.split('.')
+    parts = token.split(".")
     if len(parts) != 3:
         return False
     header_base64, payload_base64, signature = parts
-    secret = config['JWT']['SECRET']
-    expected_signature = hashlib.sha256(f'{header_base64}.{payload_base64}.{secret}'.encode('utf-8')).hexdigest()
+    expected_signature = hashlib.sha256(
+        f"{header_base64}.{payload_base64}.{JWT_SECRET}".encode("utf-8")
+    ).hexdigest()
     is_valid = signature == expected_signature
-    # Ensure the token exists in the user's sessions, and is not disabled (deleted)
+    print(f"Signature valid: {is_valid}")
+
     if not is_valid:
-        return False
-    payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
-    exp = payload['exp']
-    
-    # If the role is 'guest' - allow
-    # TODO: Verify guest sessions
-    if 'role' in payload and payload['role'] == 'guest':
-        return True
-    
-    # Ensure the token exists
-    user_data = get_user_data(payload['username'])
-    if user_data is None or user_data.get('token') != token:
         return False
     
     # Ensure the token has not expired
@@ -133,6 +123,7 @@ def verify_token(token: str) -> bool:
     if current_time > exp:
         return False
     return True
+
 
 def create_session_token(username: str, password: str) -> str:
     """
@@ -149,21 +140,17 @@ def create_session_token(username: str, password: str) -> str:
         Exception: If the credentials are invalid.
     """
     user_data = get_user_data(username)
-    hashed_password = hash_password(password)
-    if user_data is None or user_data['password'] != hashed_password:
+    if user_data is None or "password" not in user_data:
+        print(f"User {username} not found or has no password")
         raise Exception("INVALID_CREDENTIALS")
-    
-    token, payload = create_token(user_data)
-    
-    # Get the user data and update the current token
-    with users_repository.create_session() as session:
-        user = session.get_first({'username': username})
-        if user is None:
-            raise Exception("User not found")
-        user.current_token = token
-        session.update(user)
-    
-    return token
+
+    hashed_password = hashlib.md5(password.encode("utf-8")).hexdigest()
+    if user_data["password"] != hashed_password:
+        print(f"Invalid password for user {username}")
+        raise Exception("INVALID_CREDENTIALS")
+
+    print(f"Password validation successful for {username}")
+    return finalise_token_creation(username, user_data)
 
 def refresh_session_token(token: str) -> str:
     """Refresh a session token by extending its expiration time.
@@ -174,13 +161,13 @@ def refresh_session_token(token: str) -> str:
     Returns:
         str: The new token with the updated expiration time.
     """
-    parts = token.split('.')
+    parts = token.split(".")
     if len(parts) != 3:
         raise Exception("INVALID_TOKEN")
     header_base64, payload_base64, signature = parts
-    payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
+    payload = json.loads(base64.b64decode(payload_base64).decode("utf-8"))
     # Find the user data from the payload
-    username = payload['username']
+    username = payload["username"]
     user_data = get_user_data(username)
     
     if user_data is None:
@@ -190,7 +177,6 @@ def refresh_session_token(token: str) -> str:
         raise Exception("INVALID_TOKEN")
     
     token, payload = create_token(user_data)
-    
     # Update the user's current token
     with users_repository.create_session() as session:
         user = session.get_first({'username': username})
@@ -198,8 +184,8 @@ def refresh_session_token(token: str) -> str:
             raise Exception("User not found")
         user.current_token = token
         session.update(user)
-    
     return token
+
 
 def disable_session_token(token: str) -> bool:
     """
@@ -212,12 +198,11 @@ def disable_session_token(token: str) -> bool:
         bool: True if the token was successfully disabled, False otherwise.
     """
     # print("Disabling token", token, "...")
-    parts = token.split('.')
+    parts = token.split(".")
     if len(parts) != 3:
         return False
     header_base64, payload_base64, signature = parts
     payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
-    
     try:
         with users_repository.create_session() as session:
             user = session.get_first({'username': payload['username']})
@@ -229,6 +214,7 @@ def disable_session_token(token: str) -> bool:
             return True
     except Exception as e:
         return False
+
 
 def disable_sessions_for_user(username: str) -> bool:
     """
@@ -252,8 +238,69 @@ def disable_sessions_for_user(username: str) -> bool:
         return False
     return True
 
+
+def get_most_recent_session_path(username: str) -> dict:
+    """
+    Retrieve the path of the most recent session for the given username.
+
+    Args:
+        username (str): The username of the user.
+
+    Returns:
+        dict: The path of the most recent session, or None if no sessions exist.
+    """
+    user_data = get_user_data(username)
+    if user_data is None:
+        return None
+    sessions = metadata.list_objects(f"{USERS_FOLDER_PREFIX}/{username}/sessions/")
+    if not sessions:
+        return None
+    most_recent_session = sessions[0]
+    for session in sessions:
+        session_data = metadata.head_object(session)
+        most_recent_session_data = metadata.head_object(most_recent_session)
+        if session_data["LastModified"] > most_recent_session_data["LastModified"]:
+            most_recent_session = session
+    return most_recent_session
+
+
+def finalise_token_creation(username: str, user_data: dict) -> str | None:
+    """
+    Creates new token.
+    Returns the new token string or None on failure.
+    """
+
+    # Create the new JWT
+    token, payload = create_token(user_data)
+    if not token or not payload:
+        print(f"Failed to create token for user {username}")
+        return None
+    return token
+
+
+def create_token_after_external_auth(
+    external_user_details: dict,
+) -> str | None:
+    """
+    Finds a user based on external details and generates a token.
+    Returns token string or None on failure.
+    """
+    username = external_user_details.get("username")
+
+    if not username:
+        print("External user details missing required email field.")
+        return None
+
+    user_data = get_user_data(username)
+
+    if user_data is None:
+        print(f"User '{username}' not found.")
+        return None
+    else:
+        return finalise_token_creation(username, user_data)
+
 if __name__ == "__main__":
-    token = create_session_token('dantran', 'dantran')
+    token = create_session_token("dantran", "dantran")
     # print(token)
     # print(verify_token(token))
     # print(get_most_recent_session_path('dantran'))

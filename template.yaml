@@ -9,15 +9,18 @@ Globals:
     MemorySize: 2048
 
 Resources:
-  ApiGatewayApi:
+  MyApi:
     Type: AWS::Serverless::Api
     Properties:
-      StageName: Prod
+      StageName: local
       Cors:
-        AllowMethods: "'*'"
-        AllowHeaders: "'*'"
-        AllowOrigin: "'http://localhost:5173'"
-        MaxAge: "'600'"
+        # '*' is NOT allowed with AllowCredentials: true.
+        # List the specific origins your frontend runs on locally.
+        AllowOrigin: "'http://localhost:5173'" # Add other local ports if needed (e.g., 3000) - single quotes required!
+        AllowMethods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        AllowCredentials: true # MUST be true if frontend sends Auth header or cookies (ours does)
+        MaxAge: "'600'" # 10 minutes
   AaoApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -30,7 +33,6 @@ Resources:
         CatchAll:
           Type: Api
           Properties:
-            Path: /{proxy+} # Catch-all paths
+            RestApiId: !Ref MyApi # Link to the API resource
+            Path: /{proxy+} # Catch all paths
             Method: ANY
-            RestApiId:
-              Ref: ApiGatewayApi
