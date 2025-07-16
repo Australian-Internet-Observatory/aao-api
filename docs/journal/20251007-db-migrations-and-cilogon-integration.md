@@ -1,6 +1,6 @@
 ---
 created: 2025-07-10
-updated: 2025-07-10
+updated: 2025-07-16
 author: Dan Tran
 updated_by: Dan Tran
 ---
@@ -77,28 +77,34 @@ Prior to the main task, we need to separate the production and development envir
   * Will need to copy the current production database to the dev database.
 * A new `fta-mobile-observations-api-dev` Lambda function that will use the dev database.
 
-* Add a migration script to:Create a user_identities table
+* Add a migration script to:
+  * Create a user_identities table
   * Populate the user_identities table with local identities, using the username of current users as the provider_user_idand and move the password field from usersto user_identities
   * Remove the username and password fields from the users table
   * Should we stop storing JWT in the database? Yes, this breaks stateless design & it is not critical to disable "sessions" -> will need to update jwt.py to stop looking up current token
-  * Update projects team and owner fields to reference user_id instead of username
   * Update ad_attributes table's created_by and modified_by to reference the user_id instead of username
+
 * Update JWT schema to include:
   * user_id (instead of username)
   * full_name
   * role
   * enabled
+
 * Update API endpoints:
   * [POST] `users` should require (username, email, password) then 
     * create a new user in the users table as usual
     * insert into user_identities values (user_id, "local", username, password, current_timestamp)
+
 * [GET] users should return a list of the following fields: (user_id, full_name, role, enabled) BREAKING CHANGE - WILL NEED TO UPDATE FRONT-END
+
 * auth/cilogon/callback should select user_id from user_identities where provider = "cilogon" and provider_user_id = cilogon_client_id to check if a user already exists, and
   * if not found, create_new_cilogon_user(cilogon_client_id)
     * create a new user in the users table, then
     * insert into user_identities values (user_id, "cilogon", cilogon_client_id, current_timestamp)
     * return JWT generated from the new user
-* if found, select id, full_name, role, enabled from users where id = user_id and return the JWT generated from the matched user
+
+  * if found, select id, full_name, role, enabled from users where id = user_id and return the JWT generated from the matched user
+
 * Update front end:
   * The user management table (at /users) should no longer show the username and password -> will need a different design to accommodate password editing for "local" authentication
   * 'local' vs CILogon sign-in: add CILogon interface but hide until alcohol study concludes
@@ -110,7 +116,7 @@ Prior to the main task, we need to separate the production and development envir
 
 ## Execution
 
-### Setting up Alembic as the Migration Tool
+### [x] Setting up Alembic as the Migration Tool
 
 Since we are using SQLAlchemy to interact with a PostgreSQL database (hosted as an RDS instance), we can use Alembic as the migration tool. [Alembic](https://alembic.sqlalchemy.org/en/latest/) is part of the SQLAlchemy project and can be used to manage database migrations.
 
@@ -188,7 +194,11 @@ config.set_main_option("sqlalchemy.url", db_url)
 
 **Step 5: Create Initial Migration**
 
-Generate the initial migration based on current models:
+> [!NOTE]
+>
+> This step should be done if the database is empty, and it is intended to populate the database with the current state of the models. If the database already has data, there is no need to create an initial migration, as the existing data will be preserved.
+
+Generate the initial migration based on current models.
 
 ```bash
 alembic revision --autogenerate -m "Initial migration"
@@ -202,4 +212,89 @@ Apply migrations to the development database:
 
 ```bash
 alembic upgrade head
+```
+
+This command applies all pending migrations to the database, updating its schema to match the current state of your models.
+
+### [x] Update the Models
+
+Before generating the migration script, we need to update the relevant models to support the new schema for CILogon integration.
+
+**Changes made to `models/user.py`:**
+- Created new `UserIdentityORM` model for the `user_identities` table with:
+  - Composite primary key (`user_id`, `provider`)
+  - Foreign key to `users.id`
+  - Fields: `provider_user_id`, `password` (nullable), `created_at`
+- Updated `UserORM` model:
+  - Removed: `username`, `password`, `current_token` fields
+  - Made `full_name` nullable for CILogon users
+  - Added relationship to `user_identities`
+- Created corresponding Pydantic models: `User` and `UserIdentity`
+
+**Changes made to `models/attribute.py`:**
+- Updated comments to clarify `created_by` and `modified_by` will reference `user.id` instead of username
+- No structural changes (data migration handles the reference updates)
+
+### [x] Generate Migration Script
+
+The migration script handles both schema changes and data migration to ensure no data loss.
+
+**Step 1: Generate Initial Migration**
+
+```bash
+alembic revision --autogenerate -m "Add user_identities table for sso"
+```
+
+**Step 2: Customize the Migration Script**
+
+The auto-generated migration was customized to include:
+
+**Upgrade process:**
+- Create `user_identities` table with proper constraints
+- Migrate existing user data to `user_identities` with provider='local'
+- Update `ad_attributes` references from username to user_id
+- Make `full_name` nullable
+- Drop old columns (`username`, `password`, `current_token`)
+
+**Downgrade process:**
+- Restore old schema by re-adding dropped columns
+- Migrate data back from `user_identities` to `users` (local users only)
+- Restore constraints and references
+- Drop `user_identities` table
+- ⚠️ **Warning**: CILogon user data will be lost during downgrade
+
+**Step 3: Test the Migration**
+
+```bash
+# Apply the migration
+alembic upgrade head
+```
+
+**Verification checks:**
+- `user_identities` table exists and is populated
+- `users` table has correct schema  
+- `ad_attributes` references are updated
+- No data loss occurred
+
+**Step 4: Verification Queries**
+
+After migration, run these queries to verify the data migration was successful:
+
+```sql
+-- Check that all original users have local identities
+SELECT COUNT(*) FROM users;
+SELECT COUNT(*) FROM user_identities WHERE provider = 'local';
+-- These counts should match
+
+-- Check that ad_attributes references are valid user IDs
+SELECT COUNT(*) FROM ad_attributes a 
+LEFT JOIN users u ON a.created_by = u.id 
+WHERE u.id IS NULL;
+-- Should return 0
+
+-- Check for any orphaned references
+SELECT COUNT(*) FROM ad_attributes a 
+LEFT JOIN users u ON a.modified_by = u.id 
+WHERE u.id IS NULL;
+-- Should return 0
 ```

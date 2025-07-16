@@ -48,7 +48,6 @@ class RdsStorageClient(BaseStorageClient):
     def connect(self):
         """Connect to the RDS service."""
         self.session_maker, self.engine = get_db_session(self.db_url)
-        self.base_orm.metadata.create_all(self.engine)
         if self.session_maker and self.engine:
             self.connected = True
         else:
