@@ -21,7 +21,6 @@ Resources:
         AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
         AllowCredentials: true # MUST be true if frontend sends Auth header or cookies (ours does)
         MaxAge: "'600'" # 10 minutes
-
   AaoApiFunction:
     Type: AWS::Serverless::Function
     Properties:
