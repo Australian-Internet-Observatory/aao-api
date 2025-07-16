@@ -6,6 +6,14 @@ from models.user import User
 from utils.hash_password import hash_password
 from configparser import ConfigParser
 
+
+class User:
+    enabled: bool
+    password: str
+    username: str
+    full_name: str
+
+
 config = ConfigParser()
 config.read("config.ini")
 
@@ -26,20 +34,10 @@ def get_user_data(username: str) -> dict:
         dict: The user data as a dictionary, or None if an error occurs.
     """
     try:
-        with users_repository.create_session() as session:
-            user = session.get_first({'username': username})
-            if user is None:
-                return None
-            data = user.model_dump()
-            # Ensure the password is not included in the returned data
-            return {
-                'username': data['username'],
-                'full_name': data.get('full_name', ''),
-                'enabled': data.get('enabled', True),
-                'password': data.get('password', None),
-                'role': data.get('role', 'user'),
-                'token': data.get('current_token', None)
-            }
+        data = metadata.get_object(
+            f"{USERS_FOLDER_PREFIX}/{username}/credentials.json"
+        ).decode("utf-8")
+        return json.loads(data)
     except Exception as e:
         return None
 
@@ -172,18 +170,8 @@ def refresh_session_token(token: str) -> str:
     
     if user_data is None:
         raise Exception("INVALID_CREDENTIALS")
-    # Ensure the token is valid
-    if user_data.get('token') != token:
-        raise Exception("INVALID_TOKEN")
     
     token, payload = create_token(user_data)
-    # Update the user's current token
-    with users_repository.create_session() as session:
-        user = session.get_first({'username': username})
-        if user is None:
-            raise Exception("User not found")
-        user.current_token = token
-        session.update(user)
     return token
 
 
@@ -226,17 +214,111 @@ def disable_sessions_for_user(username: str) -> bool:
     Returns:
         bool: True if all sessions were successfully disabled, False otherwise.
     """
-    try:
-        with users_repository.create_session() as session:
-            user = session.get_first({'username': username})
-            if user is None:
-                return False
-            # Update the user's current token to None
-            user.current_token = None
-            session.update(user)
-    except Exception as e:
-        return False
+    sessions = metadata.list_objects(f"{USERS_FOLDER_PREFIX}/{username}/sessions/")
+    for session in sessions:
+        try:
+            metadata.delete_object(session)
+        except Exception as e:
+            return False
     return True
+
+
+def get_most_recent_session_path(username: str) -> dict:
+    """
+    Retrieve the path of the most recent session for the given username.
+
+    Args:
+        username (str): The username of the user.
+
+    Returns:
+        dict: The path of the most recent session, or None if no sessions exist.
+    """
+    user_data = get_user_data(username)
+    if user_data is None:
+        return None
+    sessions = metadata.list_objects(f"{USERS_FOLDER_PREFIX}/{username}/sessions/")
+    if not sessions:
+        return None
+    most_recent_session = sessions[0]
+    for session in sessions:
+        session_data = metadata.head_object(session)
+        most_recent_session_data = metadata.head_object(most_recent_session)
+        if session_data["LastModified"] > most_recent_session_data["LastModified"]:
+            most_recent_session = session
+    return most_recent_session
+
+
+def finalise_token_creation(username: str, user_data: dict) -> str | None:
+    """
+    Disables old token, creates new token, saves session object.
+    Returns the new token string or None on failure.
+    """
+    most_recent_session_path = get_most_recent_session_path(username)
+    if most_recent_session_path is not None:
+        # Extract the token string from the path (assuming format {exp}_{token}.json)
+        try:
+            filename = most_recent_session_path.split("/")[-1]
+            # Find the first underscore, everything after it until .json is the token
+            token_part = filename[filename.index("_") + 1 : filename.rindex(".json")]
+            if token_part:
+                print(f"Disabling previous token for user {username}")
+                disable_session_token(token_part)
+            else:
+                print(
+                    f"Could not parse previous token from path: {most_recent_session_path}"
+                )
+        except ValueError:
+            print(
+                f"Could not parse previous token from path: {most_recent_session_path}"
+            )
+
+    # Create the new JWT
+    token, payload = create_token(user_data)
+    if not token or not payload:
+        print(f"Failed to create token for user {username}")
+        return None
+
+    # Save the session object to S3 for verification later
+    exp = payload.get("exp")
+    if not exp:
+        print(f"Token payload missing expiration for user {username}")
+        return None
+
+    session_object_path = (
+        f"{USERS_FOLDER_PREFIX}/{username}/sessions/{exp}_{token}.json"
+    )
+    try:
+        metadata.put_object(session_object_path, json.dumps(payload).encode("utf-8"))
+        print(f"Created new session object for {username} at {session_object_path}")
+        return token
+    except Exception as e:
+        print(
+            f"Failed to save session object for user {username} at {session_object_path}: {e}"
+        )
+        return None
+
+
+def create_token_after_external_auth(
+    external_user_details: dict,
+) -> str | None:
+    """
+    Finds a user based on external details and generates a token.
+    Returns token string or None on failure.
+    """
+    username = external_user_details.get("username")
+
+    if not username:
+        print("External user details missing required email field.")
+        return None
+
+    user_data = get_user_data(username)
+
+    if user_data is None:
+        print(f"User '{username}' not found.")
+        return None
+    else:
+        return finalise_token_creation(username, user_data)
+
 
 
 def get_most_recent_session_path(username: str) -> dict:
