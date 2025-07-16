@@ -12,7 +12,9 @@ import base64
 import json
 from routes import routes
 import utils.observations_sub_bucket as observations_sub_bucket
-
+import configparser
+config = configparser.ConfigParser()
+config.read('config.ini')
 
 @route('reflect', 'POST')
 def reflect(event):
@@ -49,7 +51,8 @@ def reflect(event):
 
 @route('/hello', 'GET')
 def hello():
-    return {'message': 'Hello, world!'}
+    api_name = config.get('DEPLOYMENT', 'LAMBDA_FUNCTION_NAME', fallback='unknown')
+    return {'message': f"Hello from {api_name}!"}
 
 @route('/hello/{user_id}', 'GET')
 def hello(event):
