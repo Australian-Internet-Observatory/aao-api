@@ -1,8 +1,7 @@
 from typing import List
 from pydantic import BaseModel
-from sqlalchemy.orm import declarative_base, Mapped, mapped_column
-
-Base = declarative_base()
+from sqlalchemy.orm import Mapped, mapped_column
+from .base import Base
 
 class AdTagORM(Base):
     __tablename__ = 'applied_tags'

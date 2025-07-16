@@ -1,8 +1,7 @@
 from uuid import uuid4
 from pydantic import BaseModel
-from sqlalchemy.orm import declarative_base, Mapped, mapped_column
-
-Base = declarative_base()
+from sqlalchemy.orm import Mapped, mapped_column
+from .base import Base
 
 class UserORM(Base):
     __tablename__ = 'users'

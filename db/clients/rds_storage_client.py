@@ -3,9 +3,7 @@ from db.clients.base_storage_client import BaseStorageClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from configparser import ConfigParser
-from sqlalchemy.orm import declarative_base
-
-BaseORM = declarative_base()
+from models.base import Base as BaseORM
 
 config = ConfigParser()
 config.read('config.ini')
