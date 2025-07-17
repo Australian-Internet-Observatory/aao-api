@@ -1,9 +1,12 @@
+from models.user import User, UserIdentity
 from routes import route
 from middlewares.authenticate import authenticate
 from utils import Response, use, jwt
 from configparser import ConfigParser
 from utils.auth_providers import client as cilogon_client
 from utils.security import sign_state_data, verify_signed_state_data
+from db.shared_repositories import users_repository, user_identities_repository
+import time
 
 config = ConfigParser()
 config.read("config.ini")
@@ -202,10 +205,42 @@ def cilogon_login(event, response: Response):
         )
         return event, response, {}
 
+def get_or_create_external_user_identity(provider: str, provider_user_id: str, full_name: str) -> UserIdentity:
+    """Gets a user given their SSO provider and user ID. If the user does not exist, it creates a new user with role 'pending'."""
+    with user_identities_repository.create_session() as identity_session, \
+         users_repository.create_session() as user_session:
+        # Check if the identity already exists
+        existing_identity: UserIdentity = identity_session.get_first({
+            'provider': provider,
+            'provider_user_id': provider_user_id
+        })
 
-# TODO: make path auth/cilogon/authorize
+        # If the identity exists, return it
+        if existing_identity:
+            return existing_identity
+
+        # Otherwise, create a new user with the provided identity and return it
+        new_user = user_session.create({
+            'full_name': full_name,
+            'enabled': False, # New users are not enabled
+            'role': 'user'
+        })
+
+        identity_data = {
+            'user_id': new_user['id'],
+            'provider': provider,
+            'provider_user_id': provider_user_id,
+            'created_at': int(time.time())
+        }
+        identity_session.create(identity_data)
+
+        return identity_session.get_first({
+            'provider': provider,
+            'provider_user_id': provider_user_id
+        })
+
 @route(
-    "callback", "GET"
+    "auth/cilogon/authorize", "GET"
 )  # This path must match REDIRECT_URI in config.ini and CILogon setting
 def cilogon_authorize(event, response: Response):
     """Handles the callback from CILogon after authentication.
@@ -323,19 +358,25 @@ def cilogon_authorize(event, response: Response):
         # 6. Get user info (using OIDC userinfo endpoint)
         userinfo_endpoint = cilogon_client.metadata.get("userinfo_endpoint")
         userinfo = cilogon_client.get(userinfo_endpoint).json()
-
+        
+        print(f"Obtained userinfo: {userinfo}")
+        if not userinfo or "email" not in userinfo:
+            response.status(400).json(
+                {"success": False, "comment": "User info missing email field"}
+            )
+            return event, response, {}
+        
+        # 7. Get the user or create a new one in our application with the SSO provider
+        app_user_identity = get_or_create_external_user_identity(
+            provider="cilogon",
+            provider_user_id=userinfo.get("sub"),
+            full_name=userinfo.get("name")
+        )
+        
         # TODO: Check if user is 'deactivated' in CILogon (See POC for details)
 
-        # 7. Create a JWT token for our application
-        app_user_data = {
-            "username": userinfo.get("email"),
-        }
-
-        app_token = jwt.create_token_after_external_auth(app_user_data)
-
-        if not app_token:
-            response.status(500).json({"success": False, "comment": "User not found"})
-            return event, response, {}
+        # 8. Create a JWT token for our application
+        app_token = jwt.JsonWebToken.from_identity(app_user_identity).token
 
         # 8. Prepare final redirect response to the frontend
         #    Include app token in the redirect URL (e.g., fragment #token=...)
@@ -364,6 +405,8 @@ def cilogon_authorize(event, response: Response):
         return event, response, {}
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"CILogon authorize error: {e}")
         # Log detailed error, including Authlib errors if possible
         # Consider redirecting to an error page on the frontend

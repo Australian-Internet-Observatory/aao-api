@@ -139,7 +139,7 @@ class JsonWebToken:
         )
     
     @staticmethod
-    def from_identity(user_identity: UserIdentityORM, expire: int = None) -> 'JsonWebToken':
+    def from_identity(user_identity: UserIdentity, expire: int = None) -> 'JsonWebToken':
         """
         Create a JsonWebToken instance from a UserIdentityORM object.
         
@@ -158,7 +158,7 @@ class JsonWebToken:
         return JsonWebToken.from_user(user, provider=user_identity.provider, expire=expire)
     
     @staticmethod
-    def from_user(user: UserORM, provider: str = None, expire: int = None):
+    def from_user(user: User, provider: str = None, expire: int = None):
         """
         Create a JsonWebToken instance from a UserORM object.
         
@@ -340,6 +340,32 @@ def get_most_recent_session_path(username: str) -> dict:
     return None
 
 # TODO: CILogon integration
+def get_user_data(username: str) -> User | None:
+    """
+    Retrieve user data by username.
+    
+    Args:
+        username (str): The username of the user.
+        
+    Returns:
+        UserORM | None: The user data object if found, otherwise None.
+    """
+    with users_repository.create_session() as session:
+        return session.get_first({'username': username})
+
+def finalise_token_creation(username: str, user_data: dict) -> str | None:
+    """
+    Creates new token.
+    Returns the new token string or None on failure.
+    """
+
+    # Create the new JWT
+    token, payload = create_token(user_data)
+    if not token or not payload:
+        print(f"Failed to create token for user {username}")
+        return None
+    return token
+
 def create_token_after_external_auth(
     external_user_details: dict,
 ) -> str | None:
@@ -353,4 +379,10 @@ def create_token_after_external_auth(
         print("External user details missing required email field.")
         return None
 
-    return None
+    user_data = get_user_data(username)
+
+    if user_data is None:
+        print(f"User '{username}' not found.")
+        return None
+    else:
+        return finalise_token_creation(username, user_data)

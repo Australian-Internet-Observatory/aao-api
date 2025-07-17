@@ -467,7 +467,7 @@ Based on the above notes and following the order of dependencies, the following 
 - [x] Test files to work with the new user model and removed deprecated logout/refresh endpoints
 - [ ] Update the frontend to accommodate the new user model and API response structure
 
-### [ ] CILogon Integration
+### [x] CILogon Integration
 
 **Authentication Routes - `/routes/auth.py`**
 - **`cilogon_authorize()`**: 
@@ -481,4 +481,14 @@ Based on the above notes and following the order of dependencies, the following 
 
 **New CILogon Endpoints**  
 - **`/auth/cilogon/login`**: Already implemented - redirects to CILogon
-- **`/auth/cilogon/callback`**: Currently uses username-based user lookup and JWT creation logic
+- **`/auth/cilogon/authorize`**: Creates JWT token by using the `email` from CILogon userinfo as `username`
+
+> [!NOTE]
+>
+> The CILogon integration will need to be updated to use the new `user_identities` table structure by storing the identity in the `user_identities` and manage associated user in the `users` table.
+>
+> The `provider_user_id` can be obtained from the `sub` field in the CILogon userinfo, which is a unique identifier for the user in the CILogon system. This will be used to create or update the `user_identities` table.
+>
+> The CILogon userinfor also provides a `name` field which can be used to populate the `full_name` field in the `users` table.
+>
+> Since we don't want CILogon users (so anyone) to be able to access the API, they will be created with `enabled=False`. An admin will need to enable them manually.
