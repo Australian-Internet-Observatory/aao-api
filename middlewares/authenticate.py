@@ -1,5 +1,7 @@
 import boto3
 from configparser import ConfigParser
+from db.clients.rds_storage_client import RdsStorageClient
+from models.user import UserIdentityORM
 from utils import jwt
 
 config = ConfigParser()
@@ -11,8 +13,8 @@ session_us_east = boto3.Session(
     aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY']
 )
 
-def validate_session_token(arg_session_token):
-    return jwt.verify_token(arg_session_token)
+# def validate_session_token(arg_session_token):
+#     return jwt.verify_token(arg_session_token)
 
 def authenticate(event, response, context):
     """Middleware to authenticate the user using a JSON web token.
@@ -45,13 +47,16 @@ def authenticate(event, response, context):
             "comment": f'INVALID_AUTHORIZATION_HEADER',
         })
         return event, response, context
-    session_token = bearer[7:]
-    if not validate_session_token(session_token):
+    token = bearer[7:]
+    if not jwt.verify_token(token):
         response.status(401).json({
             "success": False,
             "comment": "SESSION_TOKEN_EXPIRED",
         })
         return event, response, context
-    event['user'] = jwt.decode_token(session_token)
-    print(f"[Authentication] User successfully verified: {event['user']}")
+    
+    json_web_token = jwt.JsonWebToken.from_token(token)
+    event['identity'] = json_web_token.identity
+    event['user'] = json_web_token.user
+    print(f"[Authentication] User successfully verified: {event['user']} with identity {event['identity']}")
     return event, response, context

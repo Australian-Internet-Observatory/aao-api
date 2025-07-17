@@ -3,12 +3,21 @@ from db.repository import Repository
 from models.ad_tag import AdTag, AdTagORM
 from models.attribute import AdAttribute, AdAttributeORM
 from models.tag import Tag, TagORM
-from models.user import User, UserORM
+from models.user import User, UserORM, UserIdentity, UserIdentityORM
 
 users_repository = Repository(
     model=User,
     client=RdsStorageClient(
         base_orm=UserORM
+    )
+)
+
+user_identities_repository = Repository(
+    model=UserIdentity,
+    keys=['user_id', 'provider'],
+    auto_generate_key=False,
+    client=RdsStorageClient(
+        base_orm=UserIdentityORM
     )
 )
 

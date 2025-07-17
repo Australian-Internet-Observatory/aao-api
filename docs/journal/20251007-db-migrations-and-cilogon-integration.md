@@ -261,7 +261,7 @@ The auto-generated migration was customized to include:
 - Migrate data back from `user_identities` to `users` (local users only)
 - Restore constraints and references
 - Drop `user_identities` table
-- ⚠️ **Warning**: CILogon user data will be lost during downgrade
+- **Warning**: CILogon user data will be lost during downgrade
 
 **Step 3: Test the Migration**
 
@@ -298,3 +298,187 @@ LEFT JOIN users u ON a.modified_by = u.id
 WHERE u.id IS NULL;
 -- Should return 0
 ```
+
+### [ ] Update the API Endpoints - Local Authentication
+
+The breaking changes to the `User` model include removing the `username` and `password` fields, and introducing the `user_identities` table for managing user authentication. The API endpoints will need to be updated accordingly.
+
+This section outlines the necessary changes to ensure local authentication still works with the new `user_identities` table structure. CILogon integration will be handled separately in the next section.
+
+The following files and functions are affected by the user model changes and need to be updated to work with the new `user_identities` table structure:
+
+**Core Routes - `/routes/users.py`**
+- **`list_users()`**: 
+  - OpenAPI schema includes `username` and `password` fields
+  - `get_user_dict()` helper returns `(id, username, enabled, full_name, role)`
+  - Uses `user.username` from UserORM model
+- **`create_user()`**: 
+  - Requires `(username, enabled, password, full_name, role)` parameters
+  - Checks for existing user with `session.get_first({'username': new_user['username']})`
+  - Stores hashed password directly in user record
+- **`edit_user()`**: 
+  - Uses path parameter `{username}` for user identification
+  - Performs lookup with `session.get_first({'username': username})`
+  - Authorization checks `caller['username'] != username`
+  - Updates password directly in user record
+- **`get_current_user()`**: 
+  - Looks up user with `session.get_first({'username': event['user']['username']})`
+  - Returns user data including username and password fields
+- **`get_user()`**: 
+  - Uses path parameter `{username}` for user identification
+  - Performs lookup with `session.get_first({'username': username})`
+  - Authorization checks `caller['username'] != username`
+- **`delete_user()`**: 
+  - Uses path parameter `{username}` for user identification
+  - Performs deletion with `session.delete({'username': username})`
+
+> [!NOTE]
+>
+> The above endpoints now only manage `local` users, so they will need to be updated to work with the new `user_identities` table structure, including:
+> - When provided with a `username`, look up the user in the `user_identities`, then use the `user_id` to identify the user in the `users` table and perform operations accordingly
+> - When updating the display name, the `full_name` field in the `users` table should be updated
+> - When updating the password, the `password` field in the `user_identities` table should be updated
+> - When creating a new user, a record should be inserted into both tables:
+>   - `users` table with `full_name`, `enabled`, `role`
+>   - `user_identities` table with `provider='local'`, `provider_user_id=username`, `password`, `created_at`
+> - When deleting a user, delete the record from `user_identities` table, and if no other identities exist for that user, delete the record from the `users` table as well
+> - When listing users, the `list_users()` endpoint should return user data from the `users` table, but the `username` field should be retrieved from the `user_identities` table.
+
+**Authentication Routes - `/routes/auth.py`**
+- **`login()`**: 
+  - Calls `jwt.create_session_token(username, password)` with username from request body
+  - Expects JWT payload to contain username-based user identification
+- **`logout()`**: 
+  - Calls `jwt.disable_session_token(token)` to invalidate the current session
+- **`refresh()`**: 
+  - Calls `jwt.refresh_session_token(token)` with token from request body
+
+> [!NOTE]
+>
+> `login()` authenticates `local` users hence requires username and password. We want to keep this signature, but the implementation will need to:
+> - Look up the user in the `user_identities` table
+> - Validate password
+> - Call `jwt.create_token_from_identity(user_identity)` to create JWT token -> new function to be implemented in `jwt.py`
+>
+> Re-think the JWT payload - `username` is no longer appropriate. Refer to the `jwt.py` section below for the new JWT payload structure.
+>
+> `logout()` is no longer needed with the stateless JWT design - client needs to delete the stored token themselves.
+>
+> `refresh()` is no longer secure as a JWT can be extended indefinitely. This endpoint should be removed, and the client should handle token expiration by prompting the user to log in again.
+
+**Other Affected Routes**
+- **`/routes/ad_attributes.py`**:
+  - **`create_ad_attribute()`**: Uses `username = event['user']['username']` from JWT payload and sets `created_by=username, modified_by=username` in database
+- **`/routes/projects.py`**:
+  - **`get_project_member()`**: Searches team members with `member.get('username') == username`
+  - **`list_projects()`**: Uses `event['user']['username']` for project member filtering
+  - **`create_project()`**: Sets `ownerId=event['user']['username']` and creates team member with `'username': event['user']['username']`
+  - **`get_project()`**: Authorization checks use `project['ownerId'] == user['username']` and `member['username'] == user['username']`
+
+> [!NOTE]
+>
+> The event['user'] will now be a `UserIdentityORM` object, and occurrances of `event['user']['username']` should be replaced with `event['user'].id` to reference the user ID from the `users` table.
+>
+> The exception is `get_project()` will check against `user.identities[i].provider_user_id` to match the username from the `user_identities` table. This will be changed later when the `Project` model is migrated to RDS.
+
+- **`/routes/guest.py`**:
+  - JWT payload structure includes `"username": key` for guest sessions
+
+> [!NOTE]
+> The JWT payload for guest sessions will now include a `sub` field with a UUID4 generated user ID, and the `username` field will be replaced with `sub` to maintain consistency with other user sessions. The `username` field will no longer be used for guest sessions.
+
+**Middleware Updates - `/middlewares/authenticate.py`**
+- **`authenticate()`**: 
+  - Sets `event['user'] = jwt.decode_token(session_token)` where JWT payload contains username-based user data
+  - Decoded JWT payload structure includes username field that downstream functions expect
+
+> [!NOTE]
+>
+> The `authenticate()` middleware will need to be updated to decode the JWT token and extract the `sub` field as the user ID, and use this to look up the user in the `users` table.
+>
+> The `event['user']` will now be a `UserORM` object.
+
+**Utility Functions - `/utils/jwt.py`**
+- **`create_session_token()`**: 
+  - Takes `username` and `password` parameters for local authentication
+  - Calls `get_user_data(username)` to retrieve user from S3-based storage
+  - Validates password against `user_data["password"]` field stored in user record
+- **`create_token()`**: 
+  - Creates JWT payload including username and all user fields except password
+  - Stores `current_token` in user record for session management
+- **`get_user_data()`**: 
+  - Retrieves user data from S3 storage using username as identifier
+  - Returns user data including username, password, and other fields from old model
+- **`disable_session_token()`**: 
+  - Updates user record to set `current_token = None` for session invalidation
+  - Uses username from JWT payload to identify user record
+- **S3-based session management**: Creates session objects in S3 with token information for session validation
+
+> [!NOTE]
+>
+> JWT should now be totally stateless and contains the following fields:
+>
+> Standard claims:
+> - `sub` - subject identifier, in this case the user ID from the `users` table (if `guest`, this will be uuid4 generated)
+> - `iat` - issue timestamp
+> - `exp` - expiration timestamp
+>
+> Additional claims:
+> - `role` - can be `guest`, `user`, `admin` and possibly others in the future
+> - `full_name`
+> - `enabled`
+> - `provider` - the identity provider (e.g., `local`, `cilogon`, or `null` for guests)
+>
+> There will be some additional helper functions:
+>
+> - `create_token_from_identity(user_identity_id)` - creates JWT token from `user_identities` table
+> - `create_guest_token()` - creates JWT token for guest users with `sub` as a UUID4 generated user ID
+
+**Test Files**
+- **`/apitests/test_users.py`**:
+  - **`create_test_user()`**: Creates test user with `'username': username, 'password': 'testpassword'` structure
+  - **`get_user()`**: Uses `f'/users/{username}'` endpoint path with username parameter
+  - **`delete_user()`**: Uses `f'/users/{username}'` endpoint path with username parameter
+  - **`test_list_users()`**: Asserts presence of `'username'` field in user objects
+- **`/apitests/test_auth.py`**: 
+  - Login tests use `'username': username, 'password': password` request structure
+- **`/apitests/base.py`**: 
+  - Authentication helpers use username/password credentials from config for test authentication
+- **All other test files**: Username-based lookups and JWT payload expectations throughout test suite
+
+**Breaking Changes for Frontend**
+- **Current User Management Interface**: 
+  - Displays username and password fields in user tables
+  - User editing forms work with username-based identification
+  - Uses username-based URL paths like `/users/{username}`
+- **Current API Response Structure**:
+  - `/users` endpoint returns user objects including username and password fields
+  - User paths use `/users/{username}` format
+  - JWT payload contains username for user identification
+- **Use `logout` endpoint**: 
+  - Calls `/auth/logout` to invalidate the current session
+
+Based on the above notes and following the order of dependencies, the following tasks need to be completed:
+
+- [x] `users` API endpoints to work with the new `user_identities` table structure for local authentication
+- [x] `jwt.py` utility functions to create JWT tokens from `user_identities` and use the new JWT payload structure
+- [x] `authenticate()` middleware to decode JWT and set `event['user']` as `User` object and `event['identity']` as `UserIdentity` object
+- [x] Other affected routes to use `event['user'].id` for user identification instead of `username` (except for `get_project()` which will use `user.identities[i].provider_user_id`)
+- [x] Test files to work with the new user model and removed deprecated logout/refresh endpoints
+- [ ] Update the frontend to accommodate the new user model and API response structure
+
+### [ ] CILogon Integration
+
+**Authentication Routes - `/routes/auth.py`**
+- **`cilogon_authorize()`**: 
+  - Uses `userinfo.get("email")` as username in `app_user_data = {"username": userinfo.get("email")}`
+  - Calls `jwt.create_token_after_external_auth(app_user_data)` expecting username-based lookup
+
+**Utility Functions - `/utils/jwt.py`**
+- **`create_token_after_external_auth()`**: 
+  - Expects `external_user_details` to contain `username` field
+  - Calls `get_user_data(username)` to find existing user by username
+
+**New CILogon Endpoints**  
+- **`/auth/cilogon/login`**: Already implemented - redirects to CILogon
+- **`/auth/cilogon/callback`**: Currently uses username-based user lookup and JWT creation logic

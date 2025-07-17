@@ -71,10 +71,10 @@ def handle_api_gateway_event(event_raw, context):
         
         path, query_params = parse_query_parameters(path)    
         route, path_params = parse_path_parameters(path)
-        print(f'Route: {route}')
-        print(f'Path params: {path_params}')
-        print(f'Query params: {query_params}')
-        print(f'Method: {method}')
+        # print(f'Route: {route}')
+        # print(f'Path params: {path_params}')
+        # print(f'Query params: {query_params}')
+        # print(f'Method: {method}')
         if query_params is not None and len(query_params) > 0:
             event['queryStringParameters'] = query_params
         if path_params is not None and len(path_params) > 0:

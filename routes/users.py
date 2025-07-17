@@ -1,15 +1,27 @@
+from models.user import User, UserIdentity, UserORM
 from routes import route
 from middlewares.authorise import Role, authorise
 from middlewares.authenticate import authenticate
 from utils import use
 from utils.hash_password import hash_password
 from urllib.parse import unquote
+import time
+from db.shared_repositories import users_repository, user_identities_repository
 
 from configparser import ConfigParser
 config = ConfigParser()
 config.read('config.ini')
 
-from db.shared_repositories import users_repository
+
+def get_user_dict(user: User, local_identity: UserIdentity=None):
+    """Helper function to convert user entity to a dictionary."""
+    return {
+        "id": user.id,
+        "username": local_identity.provider_user_id if local_identity else None,
+        "enabled": user.enabled,
+        "full_name": user.full_name,
+        "role": user.role,
+    }
 
 @route('users', 'GET')
 @use(authenticate)
@@ -33,12 +45,12 @@ def list_users(event):
                         items:
                             type: object
                             properties:
+                                id:
+                                    type: string
                                 username:
                                     type: string
                                 enabled:
                                     type: boolean
-                                password:
-                                    type: string
                                 full_name:
                                     type: string
                                 role:
@@ -69,19 +81,20 @@ def list_users(event):
                                 type: string
                                 example: 'UNAUTHORISED'
     """
-    def get_user_dict(user):
-        """Helper function to convert user entity to a dictionary."""
-        return {
-            "id": user.id,
-            "username": user.username,
-            "enabled": user.enabled,
-            "full_name": user.full_name,
-            "role": user.role,
-        }
-    
-    with users_repository.create_session() as session:
-        user_entities = session.list()
-        users = [get_user_dict(user) for user in user_entities]
+    with users_repository.create_session() as user_session, \
+         user_identities_repository.create_session() as identity_session:
+        
+        user_entities = user_session.list()
+        users = []
+        
+        for user in user_entities:
+            # Get local identity for username
+            local_identity = identity_session.get_first({
+                'user_id': user.id, 
+                'provider': 'local'
+            })
+            users.append(get_user_dict(user, local_identity))
+        
     return users
 
 @route('users', 'POST')
@@ -156,21 +169,42 @@ def create_user(event, response):
                                 type: string
                                 example: 'UNAUTHORISED'
     """
-    new_user = event['body']
+    new_user_data = event['body']
+    username = new_user_data['username']
+    password = new_user_data['password']
     
-    # Check if user already exists
-    with users_repository.create_session() as session:
-        if session.get_first({'username': new_user['username']}) is not None:
+    # Check if user already exists by username
+    with user_identities_repository.create_session() as identity_session:
+        existing_identity = identity_session.get_first({
+            'provider': 'local', 
+            'provider_user_id': username
+        })
+        if existing_identity is not None:
             return response.status(400).json({
                 "success": False,
                 "comment": "User already exists"
             })
-        
-        # Hash the password
-        new_user['password'] = hash_password(new_user['password'])
-        
-        # Save the new user
-        session.create(new_user)
+    
+    # Create user in users table
+    with users_repository.create_session() as user_session:
+        user_data = {
+            'full_name': new_user_data['full_name'],
+            'enabled': new_user_data['enabled'],
+            'role': new_user_data['role']
+        }
+        user_entity = user_session.create(user_data)
+        user_id = user_entity['id']
+    
+    # Create identity in user_identities table
+    with user_identities_repository.create_session() as identity_session:
+        identity_data = {
+            'user_id': user_id,
+            'provider': 'local',
+            'provider_user_id': username,
+            'password': hash_password(password),
+            'created_at': int(time.time())
+        }
+        identity_session.create(identity_data)
     
     return response.status(201).json({
         "success": True,
@@ -248,59 +282,78 @@ def edit_user(event, response):
                                 type: string
                                 example: 'UNAUTHORISED'
     """
-    caller = event['user']
+    caller: User = event['user']
     
     username = event['pathParameters']['username']
     # Decode the URL-encoded username
     username = unquote(username)
     
-    # Only editable by self, or admin
-    if caller['username'] != username and Role.parse(caller['role']) != Role.ADMIN:
-        return response.status(403).json({
-            "success": False,
-            "comment": "UNAUTHORIZED"
+    # Find user identity by username
+    with user_identities_repository.create_session() as identity_session:
+        user_identity = identity_session.get_first({
+            'provider': 'local',
+            'provider_user_id': username
         })
-    
-    with users_repository.create_session() as session:
-        user_entity = session.get_first({'username': username})
-        if user_entity is None:
+        
+        if user_identity is None:
             return response.status(400).json({
                 "success": False,
                 "comment": "User not found"
             })
         
-        old_data = user_entity.model_dump()
-        new_data = event['body']
-        new_data.pop('username', None)
-        
-        acceptable_fields = ['enabled', 'password', 'full_name', 'role']
-        
-        # Ensure that the fields are acceptable
-        for key in new_data:
-            if key not in acceptable_fields:
+        user_id = user_identity.user_id
+    
+    # Only editable by self, or admin
+    if caller.id != user_id and Role.parse(caller.role) != Role.ADMIN:
+        return response.status(403).json({
+            "success": False,
+            "comment": "UNAUTHORIZED"
+        })
+    
+    new_data = event['body']
+    acceptable_fields = ['enabled', 'password', 'full_name', 'role']
+    
+    # Ensure that the fields are acceptable
+    for key in new_data:
+        if key not in acceptable_fields:
+            return response.status(400).json({
+                "success": False,
+                "comment": f"Field '{key}' is not acceptable"
+            })
+    
+    # Ensure the role is only updated by an admin
+    if 'role' in new_data and Role.parse(caller.role) != Role.ADMIN:
+        return response.status(403).json({
+            "success": False,
+            "comment": "UNAUTHORIZED"
+        })
+    
+    # Update user fields in users table
+    user_fields = {k: v for k, v in new_data.items() if k in ['enabled', 'full_name', 'role']}
+    if user_fields:
+        with users_repository.create_session() as user_session:
+            user_entity = user_session.get_first({'id': user_id})
+            if user_entity is None:
                 return response.status(400).json({
                     "success": False,
-                    "comment": f"Field '{key}' is not acceptable"
+                    "comment": "User not found"
                 })
-        
-        # Ensure the role is only updated by an admin
-        if 'role' in new_data and Role.parse(caller['role']) != Role.ADMIN:
-            return response.status(403).json({
-                "success": False,
-                "comment": "UNAUTHORIZED"
-            })
-        
-        # If the password is being updated, hash it
-        if 'password' in new_data:
-            new_data['password'] = hash_password(new_data['password'])
-        
-        # Update the user data
-        combined_data = {**old_data, **new_data}
-        session.update(combined_data)
-        return {
-            "success": True,
-            "comment": "User updated successfully"
-        }
+            
+            old_data = user_entity.model_dump()
+            combined_data = {**old_data, **user_fields}
+            user_session.update(combined_data)
+    
+    # Update password in user_identities table
+    if 'password' in new_data:
+        with user_identities_repository.create_session() as identity_session:
+            identity_data = user_identity.model_dump()
+            identity_data['password'] = hash_password(new_data['password'])
+            identity_session.update(identity_data)
+    
+    return {
+        "success": True,
+        "comment": "User updated successfully"
+    }
 
 @route('users/self', 'GET')
 @use(authenticate)
@@ -320,12 +373,12 @@ def get_current_user(event, response):
                     schema:
                         type: object
                         properties:
+                            id:
+                                type: string
                             username:
                                 type: string
                             enabled:
                                 type: boolean
-                            password:
-                                type: string
                             full_name:
                                 type: string
                             role:
@@ -345,12 +398,17 @@ def get_current_user(event, response):
                                 example: 'User not found'
     """
     try:
-        with users_repository.create_session() as session:
-            user_entity = session.get_first({'username': event['user']['username']})
-            if user_entity is None:
-                raise Exception("User not found")
-            user_data = user_entity.model_dump()
-            return user_data
+        caller: User = event['user']
+        
+        # Get local identity for username
+        with user_identities_repository.create_session() as identity_session:
+            local_identity = identity_session.get_first({
+                'user_id': caller.id,
+                'provider': 'local'
+            })
+        
+        return get_user_dict(caller, local_identity)
+        
     except Exception as e:
         return response.status(400).json({
             "success": False,
@@ -382,12 +440,12 @@ def get_user(event, response):
                     schema:
                         type: object
                         properties:
+                            id:
+                                type: string
                             username:
                                 type: string
                             enabled:
                                 type: boolean
-                            password:
-                                type: string
                             full_name:
                                 type: string
                             role:
@@ -426,19 +484,42 @@ def get_user(event, response):
     # Decode the URL-encoded username
     username = unquote(username)
     
-    if caller['username'] != username and Role.parse(caller['role']) != Role.ADMIN:
+    # Find user identity by username
+    with user_identities_repository.create_session() as identity_session:
+        user_identity = identity_session.get_first({
+            'provider': 'local',
+            'provider_user_id': username
+        })
+        
+        if user_identity is None:
+            return response.status(400).json({
+                "success": False,
+                "comment": "User not found"
+            })
+        
+        user_id = user_identity.user_id
+    
+    # Check authorization
+    if caller.id != user_id and Role.parse(caller.role) != Role.ADMIN:
         return response.status(403).json({
             "success": False,
             "comment": "UNAUTHORIZED"
         })
     
     try:
-        with users_repository.create_session() as session:
-            user_entity = session.get_first({'username': username})
+        with users_repository.create_session() as user_session, \
+             user_identities_repository.create_session() as identity_session:
+            user_entity = user_session.get_first({'id': user_id})
             if user_entity is None:
                 raise Exception("User not found")
-            user_data = user_entity.model_dump()
-            return user_data
+            
+            user_identity = identity_session.get_first({
+                'user_id': user_id,
+                'provider': 'local'
+            })
+            
+            return get_user_dict(user_entity, user_identity)
+            
     except Exception as e:
         return response.status(400).json({
             "success": False,
@@ -451,7 +532,7 @@ def get_user(event, response):
 def delete_user(event, response):
     """Delete a user (admin only)
 
-    Delete a user by moving their data to the recycle bin.
+    Delete a user by removing their data from the database.
     ---
     tags:
         - users
@@ -505,14 +586,47 @@ def delete_user(event, response):
     # Decode the URL-encoded username
     username = unquote(username)
     
-    try:
-        with users_repository.create_session() as session:
-            session.delete({'username': username})
-    except Exception as e:
-        return response.status(400).json({
-            "success": False,
-            "comment": "User not found"
+    # Find user identity by username
+    with user_identities_repository.create_session() as identity_session:
+        user_identity = identity_session.get_first({
+            'provider': 'local',
+            'provider_user_id': username
         })
+        
+        if user_identity is None:
+            return response.status(400).json({
+                "success": False,
+                "comment": "User not found"
+            })
+        
+        user_id = user_identity.user_id
+        
+        # Delete the identity record
+        try:
+            identity_session.delete({
+                'user_id': user_id,
+                'provider': 'local'
+            })
+        except Exception as e:
+            return response.status(400).json({
+                "success": False,
+                "comment": "User not found"
+            })
+    
+    # Check if user has other identities
+    with user_identities_repository.create_session() as identity_session:
+        remaining_identities = identity_session.get({'user_id': user_id})
+        
+        # If no other identities exist, delete the user record
+        if not remaining_identities:
+            try:
+                with users_repository.create_session() as user_session:
+                    user_session.delete({'id': user_id})
+            except Exception as e:
+                return response.status(400).json({
+                    "success": False,
+                    "comment": "Failed to delete user record"
+                })
     
     return response.status(200).json({
         "success": True,

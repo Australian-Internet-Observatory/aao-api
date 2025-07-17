@@ -22,7 +22,7 @@ externalDocs:
   description: Find out more about the Australian Ad Observatory
   url: https://www.admscentre.org.au/adobservatory/
 servers:
-  - url: https://f06kj1k332.execute-api.ap-southeast-2.amazonaws.com/dev/
+  - url: https://f06kj1k332.execute-api.ap-southeast-2.amazonaws.com/prod/
 """
 
 components = """

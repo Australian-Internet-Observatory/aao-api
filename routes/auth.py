@@ -56,8 +56,12 @@ def login(event, response: Response):
                             comment:
                                 type: string
     """
-    username = event["body"]["username"]
-    password = event["body"]["password"]
+    username = event["body"].get("username")
+    if not username:
+        return response.status(400).json({"success": False, "comment": "Username is required"})
+    password = event["body"].get("password")
+    if not password:
+        return response.status(400).json({"success": False, "comment": "Password is required"})
     try:
         return {"success": True, "token": jwt.create_session_token(username, password)}
     except Exception as e:
@@ -105,108 +109,12 @@ def verify(event, response: Response):
                                 type: string
                                 example: 'VERIFY_FAILED'
     """
-    token = event["body"]["token"]
+    token = event["body"].get("token")
+    if not token:
+        return response.status(400).json({"success": False, "comment": "Token is required"})
     if jwt.verify_token(token):
         return {"success": True}
     return response.status(400).json({"success": False, "comment": "VERIFY_FAILED"})
-
-
-@route("auth/logout", "POST")
-def logout(event, response: Response):
-    """Log the user out.
-
-    Log the user out and disable the JSON web token to prevent further authentication using the same token.
-    ---
-    tags:
-        - auth
-    requestBody:
-        required: true
-        content:
-            application/json:
-                schema:
-                    type: object
-                    properties:
-                        token:
-                            type: string
-    responses:
-        200:
-            description: A successful logout
-            content:
-                application/json:
-                    schema:
-                        type: object
-                        properties:
-                            success:
-                                type: boolean
-        400:
-            description: A failed logout
-            content:
-                application/json:
-                    schema:
-                        type: object
-                        properties:
-                            success:
-                                type: boolean
-                                example: False
-                            comment:
-                                type: string
-                                example: 'LOGOUT_FAILED'
-    """
-    token = event["body"]["token"]
-    if jwt.disable_session_token(token):
-        return {"success": True}
-    return response.status(400).json({"success": False, "comment": "LOGOUT_FAILED"})
-
-
-@route("auth/refresh", "POST")
-def refresh(event, response: Response):
-    """Refresh the JSON web token.
-
-    Refresh the JSON web token to extend the session.
-    ---
-    tags:
-        - auth
-    requestBody:
-        required: true
-        content:
-            application/json:
-                schema:
-                    type: object
-                    properties:
-                        token:
-                            type: string
-    responses:
-        200:
-            description: A successful refresh
-            content:
-                application/json:
-                    schema:
-                        type: object
-                        properties:
-                            success:
-                                type: boolean
-                            token:
-                                type: string
-        400:
-            description: A failed refresh
-            content:
-                application/json:
-                    schema:
-                        type: object
-                        properties:
-                            success:
-                                type: boolean
-                                example: False
-                            comment:
-                                type: string
-                                example: 'REFRESH_FAILED'
-    """
-    token = event["body"]["token"]
-    try:
-        return {"success": True, "token": jwt.refresh_session_token(token)}
-    except Exception as e:
-        return response.status(400).json({"success": False, "comment": str(e)})
-
 
 @route("auth/cilogon/login", "GET")
 def cilogon_login(event, response: Response):

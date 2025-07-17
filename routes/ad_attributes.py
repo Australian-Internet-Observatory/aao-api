@@ -217,7 +217,7 @@ def add_properties(event, response):
     
     key = attribute['key']
     current_time = int(time.time())
-    username = event['user']['username']
+    user_id = event['user'].id
     
     try:
         # Create or update attribute
@@ -226,9 +226,9 @@ def add_properties(event, response):
             key=key,
             value=str(attribute['value']),
             created_at=current_time,
-            created_by=username,
+            created_by=user_id,
             modified_at=current_time,
-            modified_by=username
+            modified_by=user_id
         )
         with ad_attributes_repository.create_session() as repository_session:
             repository_session.create_or_update(new_attr)

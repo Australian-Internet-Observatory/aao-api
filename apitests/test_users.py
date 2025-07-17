@@ -60,7 +60,8 @@ def test_get_users():
         assert 'full_name' in user, "Full name is missing"
         assert 'enabled' in user, "Enabled status is missing"
         assert 'role' in user, "Role is missing"
-        assert 'current_token' not in user, "Current token should not be present in the user list"
+        # Password should not be present in user list responses
+        assert 'password' not in user, "Password should not be present in the user list"
         
 def test_create_new_user():
     username = 'testuser-create'
@@ -73,13 +74,13 @@ def test_update_user():
     username = 'testuser-update'
     create_test_user(username)
     updated_user = {
-        'username': username,
-        'password': 'newpassword',
         'full_name': 'Updated Test User',
         'enabled': True,
         'role': 'admin'
     }
-    execute_endpoint(f'/users/{username}', method='PATCH', body=updated_user, auth=True)
+    response = execute_endpoint(f'/users/{username}', method='PATCH', body=updated_user, auth=True)
+    assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
+    
     user = get_user(username)
     assert user['statusCode'] == 200, f"Expected 200, got {user['statusCode']}"
     body = user['body']
@@ -89,17 +90,18 @@ def test_update_user():
     # Clean up
     delete_user(username)
 
-# def test_get_current_user():
-#     """Test getting the current user's information via /users/self endpoint"""
-#     response = execute_endpoint('/users/self', method='GET', auth=True)
-#     assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
-#     body = response['body']
-#     assert 'username' in body, "Username is missing"
-#     assert 'full_name' in body, "Full name is missing"
-#     assert 'enabled' in body, "Enabled status is missing"
-#     assert 'role' in body, "Role is missing"
-#     # Password should be present in the response for self
-#     assert 'password' in body, "Password should be present for self endpoint"
+def test_get_current_user():
+    """Test getting the current user's information via /users/self endpoint"""
+    response = execute_endpoint('/users/self', method='GET', auth=True)
+    assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
+    body = response['body']
+    assert 'id' in body, "User ID is missing"
+    assert 'username' in body, "Username is missing"
+    assert 'full_name' in body, "Full name is missing"
+    assert 'enabled' in body, "Enabled status is missing"
+    assert 'role' in body, "Role is missing"
+    # Password should not be present in the response
+    assert 'password' not in body, "Password should not be present in self endpoint"
 
 def test_get_specific_user():
     """Test getting a specific user by username"""
@@ -111,10 +113,13 @@ def test_get_specific_user():
     response = get_user(username)
     assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
     user = response['body']
+    assert 'id' in user, "User ID is missing"
     assert 'username' in user, "Username is missing"
     assert 'full_name' in user, "Full name is missing"
     assert 'enabled' in user, "Enabled status is missing"
     assert 'role' in user, "Role is missing"
+    # Password should not be present in individual user responses
+    assert 'password' not in user, "Password should not be present in user response"
     
     # Clean up
     delete_user(username)
