@@ -12,6 +12,7 @@ class UserORM(Base):
     full_name: Mapped[str] = mapped_column(nullable=True)  # Made optional
     enabled: Mapped[bool] = mapped_column(default=True)
     role: Mapped[str] = mapped_column(default="user")
+    primary_email: Mapped[str] = mapped_column(nullable=True)  # Made optional
     
     # Add relationship to user_identities
     identities: Mapped[List["UserIdentityORM"]] = relationship("UserIdentityORM", back_populates="user")
@@ -33,6 +34,7 @@ class User(BaseModel):
     full_name: str | None = None
     enabled: bool = True
     role: str = "user"
+    primary_email: str | None = None
 
 class UserIdentity(BaseModel):
     user_id: str

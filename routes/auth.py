@@ -205,7 +205,7 @@ def cilogon_login(event, response: Response):
         )
         return event, response, {}
 
-def get_or_create_external_user_identity(provider: str, provider_user_id: str, full_name: str) -> UserIdentity:
+def get_or_create_external_user_identity(provider: str, provider_user_id: str, full_name: str, email: str = None) -> UserIdentity:
     """Gets a user given their SSO provider and user ID. If the user does not exist, it creates a new user with role 'pending'."""
     with user_identities_repository.create_session() as identity_session, \
          users_repository.create_session() as user_session:
@@ -215,15 +215,25 @@ def get_or_create_external_user_identity(provider: str, provider_user_id: str, f
             'provider_user_id': provider_user_id
         })
 
-        # If the identity exists, return it
+        # If the identity exists, update the user record
         if existing_identity:
+            linked_user = user_session.get_first({
+                'id': existing_identity.user_id
+            })
+            user_session.update({
+                'id': existing_identity.user_id,
+                'full_name': full_name,
+                'enabled': linked_user.enabled or False,
+                'primary_email': email or linked_user.primary_email  
+            })
             return existing_identity
 
         # Otherwise, create a new user with the provided identity and return it
         new_user = user_session.create({
             'full_name': full_name,
             'enabled': False, # New users are not enabled
-            'role': 'user'
+            'role': 'user',
+            'primary_email': email  # Primary email can be set later
         })
 
         identity_data = {
@@ -370,7 +380,8 @@ def cilogon_authorize(event, response: Response):
         app_user_identity = get_or_create_external_user_identity(
             provider="cilogon",
             provider_user_id=userinfo.get("sub"),
-            full_name=userinfo.get("name")
+            full_name=userinfo.get("name"),
+            email=userinfo.get("email")
         )
         
         # TODO: Check if user is 'deactivated' in CILogon (See POC for details)

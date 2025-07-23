@@ -21,6 +21,14 @@ def authorise(*roles: list[Role]):
             })
             return event, response, context
         user: User = event['user']
+        
+        if not user.enabled:
+            response.status(403).json({
+                "success": False,
+                "comment": "USER_NOT_ENABLED",
+            })
+            return event, response, context
+        
         user_role = Role.parse(user.role)
         if user_role not in roles:
             response.status(403).json({

@@ -492,3 +492,15 @@ Based on the above notes and following the order of dependencies, the following 
 > The CILogon userinfor also provides a `name` field which can be used to populate the `full_name` field in the `users` table.
 >
 > Since we don't want CILogon users (so anyone) to be able to access the API, they will be created with `enabled=False`. An admin will need to enable them manually.
+
+### [x] External User Identity Management
+
+Using CILogon, anyone can create an account and we don't want them access to the API or dashboard. After the CILogon integration, external users are created with `enabled=False`, but there is no way to enable them from the API or dashboard.
+
+To allow management of external user identities, we need to implement the following:
+
+- [x] Add a new endpoint [GET] `/users/external` to list all external user (users whose only identity is from CILogon)
+- [x] Add a new endpoint [POST] `/users/external/{user_id}/enable` to enable an external user
+- [x] Add a new endpoint [POST] `/users/external/{user_id}/disable` to disable an external user
+- [x] Add a new endpoint [DELETE] `/users/external/{user_id}` to delete an external user - this will delete the user from both `users` and `users_identities` tables
+- [x] Add a new endpoint [GET] `/users/external/{user_id}` to get the details of an external user
