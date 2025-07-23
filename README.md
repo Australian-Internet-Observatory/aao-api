@@ -215,6 +215,24 @@ The `pulse.py` script can be used to test the deployment. This script will invok
 python -m scripts.pulse
 ```
 
+> [!IMPORTANT]
+>
+> **Deploying to production**
+>
+> First, update the `config.ini` with the production settings, such as the `LAMBDA_FUNCTION_NAME`, `DATABASE`, `REDIRECT_URI`, and `FRONTEND_URL`.
+>
+> Then, run the following commands to:
+>
+> 1. Perform any necessary database migrations.
+> 2. Package the deployment.
+> 3. Deploy the package to AWS Lambda.
+> 
+> ```bash
+> alembic upgrade head
+> ./scripts/package.sh
+> python -m scripts.deploy prod
+> ```
+
 ## Generate the API documentation
 
 To generate the API documentation locally, you will need to run the following command in the root directory of the project:
