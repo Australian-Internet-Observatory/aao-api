@@ -13,14 +13,15 @@ config = ConfigParser()
 config.read('config.ini')
 
 
-def get_user_dict(user: User, local_identity: UserIdentity=None):
+def get_user_dict(user: User, identity: UserIdentity=None):
     """Helper function to convert user entity to a dictionary."""
     return {
         "id": user.id,
-        "username": local_identity.provider_user_id if local_identity else None,
+        "username": identity.provider_user_id if identity else None,
         "enabled": user.enabled,
         "full_name": user.full_name,
         "role": user.role,
+        "provider": identity.provider if identity else None,
     }
 
 @route('users', 'GET')
@@ -54,6 +55,8 @@ def list_users(event):
                                 full_name:
                                     type: string
                                 role:
+                                    type: string
+                                provider:
                                     type: string
         400:
             description: A failed response
@@ -91,7 +94,6 @@ def list_users(event):
             # Get local identity for username
             local_identity = identity_session.get_first({
                 'user_id': user.id, 
-                'provider': 'local'
             })
             users.append(get_user_dict(user, local_identity))
         
