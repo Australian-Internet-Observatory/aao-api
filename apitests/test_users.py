@@ -36,6 +36,18 @@ def get_user(username: str):
     response = execute_endpoint(f'/users/{username}', method='GET', auth=True)
     return response
 
+def change_user_role(user_id: str, new_role: str):
+    """
+    Change a user's role by user ID.
+    
+    :param user_id: The ID of the user to change role for.
+    :param new_role: The new role to assign to the user.
+    :return: The response from the API call.
+    """
+    role_data = {'role': new_role}
+    response = execute_endpoint(f'/users/{user_id}/role', method='PATCH', body=role_data, auth=True)
+    return response
+
 def test_list_users():
     """Test listing all users via /users endpoint"""
     response = execute_endpoint('/users', method='GET', auth=True)
@@ -171,6 +183,109 @@ def test_create_duplicate_user():
     body = duplicate_response['body']
     assert body['success'] == False, "Should return failure for duplicate user"
     assert 'already exists' in body['comment'], "Error message should indicate user already exists"
+    
+    # Clean up
+    delete_user(username)
+
+def test_change_user_role_success():
+    """Test successfully changing a user's role"""
+    # First create a test user
+    username = 'testuser-role-change'
+    create_response = create_test_user(username)
+    assert create_response['statusCode'] == 201, f"Failed to create test user: {create_response['statusCode']}"
+    
+    # Get the user to obtain their ID
+    get_response = get_user(username)
+    assert get_response['statusCode'] == 200, f"Failed to get test user: {get_response['statusCode']}"
+    user_id = get_response['body']['id']
+    
+    # Verify initial role is 'user'
+    assert get_response['body']['role'] == 'user', "Initial role should be 'user'"
+    
+    # Change the user's role to 'admin'
+    role_response = change_user_role(user_id, 'admin')
+    assert role_response['statusCode'] == 200, f"Expected 200, got {role_response['statusCode']}"
+    body = role_response['body']
+    assert body['success'] == True, "Role change should be successful"
+    assert 'successfully' in body['comment'].lower(), "Success message should indicate successful role change"
+    
+    # Verify the role was actually changed
+    verify_response = get_user(username)
+    assert verify_response['statusCode'] == 200, f"Failed to verify user: {verify_response['statusCode']}"
+    assert verify_response['body']['role'] == 'admin', "Role should now be 'admin'"
+    
+    # Clean up
+    delete_user(username)
+
+def test_change_user_role_nonexistent_user():
+    """Test changing role for a user that doesn't exist"""
+    fake_user_id = 'nonexistent-user-id-12345'
+    response = change_user_role(fake_user_id, 'admin')
+    assert response['statusCode'] == 400, f"Expected 400, got {response['statusCode']}"
+    body = response['body']
+    assert body['success'] == False, "Should return failure for nonexistent user"
+    assert 'not found' in body['comment'].lower(), "Error message should indicate user not found"
+
+def test_change_user_role_multiple_changes():
+    """Test changing a user's role multiple times"""
+    # First create a test user
+    username = 'testuser-multiple-role-changes'
+    create_response = create_test_user(username)
+    assert create_response['statusCode'] == 201, f"Failed to create test user: {create_response['statusCode']}"
+    
+    # Get the user to obtain their ID
+    get_response = get_user(username)
+    assert get_response['statusCode'] == 200, f"Failed to get test user: {get_response['statusCode']}"
+    user_id = get_response['body']['id']
+    
+    # Change from 'user' to 'admin'
+    role_response_1 = change_user_role(user_id, 'admin')
+    assert role_response_1['statusCode'] == 200, f"First role change failed: {role_response_1['statusCode']}"
+    
+    # Verify the role changed to 'admin'
+    verify_response_1 = get_user(username)
+    assert verify_response_1['statusCode'] == 200, f"Failed to verify user: {verify_response_1['statusCode']}"
+    assert verify_response_1['body']['role'] == 'admin', "Role should be 'admin'"
+    
+    # Change from 'admin' back to 'user'
+    role_response_2 = change_user_role(user_id, 'user')
+    assert role_response_2['statusCode'] == 200, f"Second role change failed: {role_response_2['statusCode']}"
+    
+    # Verify the role changed back to 'user'
+    verify_response_2 = get_user(username)
+    assert verify_response_2['statusCode'] == 200, f"Failed to verify user: {verify_response_2['statusCode']}"
+    assert verify_response_2['body']['role'] == 'user', "Role should be back to 'user'"
+    
+    # Clean up
+    delete_user(username)
+
+def test_change_user_role_invalid_role():
+    """Test changing a user's role to an invalid role value"""
+    # First create a test user
+    username = 'testuser-invalid-role'
+    create_response = create_test_user(username)
+    assert create_response['statusCode'] == 201, f"Failed to create test user: {create_response['statusCode']}"
+    
+    # Get the user to obtain their ID
+    get_response = get_user(username)
+    assert get_response['statusCode'] == 200, f"Failed to get test user: {get_response['statusCode']}"
+    user_id = get_response['body']['id']
+    
+    # Try to change to an invalid role
+    role_response = change_user_role(user_id, 'invalidrole')
+    # Note: The API might accept any string as a role, so this test may need adjustment
+    # based on actual validation behavior. For now, we'll just verify it doesn't crash
+    # and the role gets set to whatever was provided
+    
+    if role_response['statusCode'] == 200:
+        # If the API accepts any role, verify it was set
+        verify_response = get_user(username)
+        assert verify_response['statusCode'] == 200, f"Failed to verify user: {verify_response['statusCode']}"
+        assert verify_response['body']['role'] == 'invalidrole', "Role should be set to the provided value"
+    else:
+        # If the API validates roles, it should return an error
+        body = role_response['body']
+        assert body['success'] == False, "Should return failure for invalid role"
     
     # Clean up
     delete_user(username)

@@ -211,6 +211,91 @@ def create_user(event, response):
         "comment": "User created successfully"
     })
 
+@route('users/{user_id}/role', 'PATCH')
+@use(authenticate)
+@use(authorise(Role.ADMIN))
+def change_user_role(event, response):
+    """Change a user's role (admin only)
+
+    Change the role of a user in the database.
+    ---
+    tags:
+        - users
+    parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+              type: string
+          description: The ID of the user to change role for
+    requestBody:
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        role:
+                            type: string
+    responses:
+        200:
+            description: Role changed successfully
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            comment:
+                                type: string
+        400:
+            description: Role change failed
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'User not found'
+        403:
+            description: Unauthorized access
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'UNAUTHORISED'
+    """
+    user_id = event['pathParameters']['user_id']
+    new_role = event['body']['role']
+    
+    # Check if user exists by ID
+    with users_repository.create_session() as user_session:
+        user_entity = user_session.get_first({'id': user_id})
+        if user_entity is None:
+            return response.status(400).json({
+                "success": False,
+                "comment": "User not found"
+            })
+        
+        # Update user's role in users table
+        user_session.update({'id': user_id, 'role': new_role})
+    
+    return response.status(200).json({
+        "success": True,
+        "comment": "User role changed successfully"
+    })
+
 @route('users/{username}', 'PATCH')
 @use(authenticate)
 @use(authorise(Role.USER, Role.ADMIN))
