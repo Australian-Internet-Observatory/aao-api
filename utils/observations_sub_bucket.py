@@ -104,15 +104,30 @@ class Observer:
             prefix = f"{self.observer_id}/rdo/{ad_id}"
             filename = "output.json"
             return read_json_file(f"{prefix}/{filename}")
-# class Observation:
-#     def __init__(self, observer_id, timestamp, ad_id):
-#         self.observer_id = observer_id
-#         self.timestamp = timestamp
-#         self.ad_id = ad_id
         
-#     def read_json_file(self, category, path):
-#         prefix = f"{self.observer_id}/{category}/{self.timestamp}.{self.ad_id}"
-#         return read_json_file(f"{prefix}/{path}")
+    def get_latest_csr_presign_url(self):
+        # List the content of the observer_id/csr directory in the S3 bucket
+        csr_dir = f"{self.observer_id}/csr/"
+        csr_files = list_dir(csr_dir)
+        
+        # If there are no CSR files, return None
+        if not csr_files:
+            return None
+        
+        # Sort the files by modification time and use the latest one
+        csr_files.sort(key=lambda x: x.split('/')[-1], reverse=True)
+        latest_csr_file = csr_files[0]
+        
+        # Generate a presigned URL for the latest CSR file
+        presigned_url = client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': MOBILE_OBSERVATIONS_BUCKET,
+                'Key': latest_csr_file
+            },
+            ExpiresIn=3600
+        )
+        return presigned_url
 
 if __name__ == "__main__":
     # observer_id = "f60b6e94-7625-4044-9153-1f70863f81d8"
