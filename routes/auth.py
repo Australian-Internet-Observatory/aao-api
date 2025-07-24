@@ -2,17 +2,14 @@ from models.user import User, UserIdentity
 from routes import route
 from middlewares.authenticate import authenticate
 from utils import Response, use, jwt
-from configparser import ConfigParser
+from config import config
 from utils.auth_providers import client as cilogon_client
 from utils.security import sign_state_data, verify_signed_state_data
 from db.shared_repositories import users_repository, user_identities_repository
 import time
 
-config = ConfigParser()
-config.read("config.ini")
-
-FRONTEND_URL = config["APP"]["FRONTEND_URL"]
-REDIRECT_URI = config["CILOGON"]["REDIRECT_URI"]
+FRONTEND_URL = config.app.frontend_url
+REDIRECT_URI = config.cilogon.redirect_uri
 
 
 @route("auth/login", "POST")

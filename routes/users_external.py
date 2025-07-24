@@ -6,11 +6,6 @@ from utils import use
 from urllib.parse import unquote
 from db.shared_repositories import users_repository, user_identities_repository
 
-from configparser import ConfigParser
-config = ConfigParser()
-config.read('config.ini')
-
-
 def get_external_user_dict(user: User, external_identity: UserIdentity):
     """Helper function to convert external user entity to a dictionary."""
     return {

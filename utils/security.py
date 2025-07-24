@@ -1,11 +1,8 @@
 from itsdangerous import URLSafeTimedSerializer
-from configparser import ConfigParser
+from config import config
 
-config = ConfigParser()
-config.read('config.ini')
-
-SECRET_KEY = config['APP']['STATE_COOKIE_SECRET']
-SALT = config['APP']['SALT']
+SECRET_KEY = config.app.state_cookie_secret
+SALT = config.app.salt
 MAX_AGE_SECONDS = 600 # In seconds (10 minutes)
 
 serializer = URLSafeTimedSerializer(SECRET_KEY, salt=SALT)

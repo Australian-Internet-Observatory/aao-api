@@ -24,16 +24,13 @@ target_metadata = Base.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
-from configparser import ConfigParser
-# Read database configuration from config.ini
-config_parser = ConfigParser()
-config_parser.read('config.ini')
+from config import config as app_config
 
-DB_HOST = config_parser.get('POSTGRES', 'HOST')
-DB_PORT = config_parser.get('POSTGRES', 'PORT')
-DB_DATABASE = config_parser.get('POSTGRES', 'DATABASE')
-DB_USERNAME = config_parser.get('POSTGRES', 'USERNAME')
-DB_PASSWORD = config_parser.get('POSTGRES', 'PASSWORD')
+DB_HOST = app_config.postgres.host
+DB_PORT = app_config.postgres.port
+DB_DATABASE = app_config.postgres.database
+DB_USERNAME = app_config.postgres.username
+DB_PASSWORD = app_config.postgres.password
 
 db_url = f'postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_DATABASE}'
 

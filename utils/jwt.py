@@ -6,13 +6,10 @@ import base64
 import uuid
 from models.user import User, UserIdentity, UserIdentityORM, UserORM
 from utils.hash_password import hash_password
-from configparser import ConfigParser
+from config import config
 from db.shared_repositories import users_repository, user_identities_repository
 
-config = ConfigParser()
-config.read("config.ini")
-
-JWT_SECRET = config["JWT"]["SECRET"]
+JWT_SECRET = config.jwt.secret
 
 def to_base64(data: dict) -> str:
     """
@@ -96,7 +93,7 @@ class JsonWebToken:
         return JsonWebToken(
             sub=str(uuid.uuid4()),
             iat=int(time.time()),
-            exp=int(time.time()) + config.getint("JWT", "EXPIRATION"),
+            exp=int(time.time()) + config.jwt.expiration,
             role="guest",
             full_name="Guest",
             enabled=True,
@@ -172,7 +169,7 @@ class JsonWebToken:
         """
         current_time = time.time()
         if expire is None:
-            expiration_time = current_time + config.getint("JWT", "EXPIRATION")
+            expiration_time = current_time + config.jwt.expiration
         else:
             expiration_time = current_time + expire
         

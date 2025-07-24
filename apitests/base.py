@@ -2,18 +2,14 @@
 import json
 from typing import Literal
 from lambda_function import lambda_handler as local_handler
-from configparser import ConfigParser
-
+from config import config
 from utils.hash_password import hash_password
 # Need to access the database directly as without functional authentication, it is not possible to create users through the API (which needs authentication).
 from db.shared_repositories import users_repository, user_identities_repository
 import time
 
-config = ConfigParser()
-config.read('config.ini')
-
-username = config['TEST']['USERNAME']
-password = config['TEST']['PASSWORD']
+username = config.test.username
+password = config.test.password
 
 
 

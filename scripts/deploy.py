@@ -4,9 +4,13 @@ import os
 import sys
 from datetime import datetime
 
-from configparser import ConfigParser
-config = ConfigParser()
-config.read('config.ini')
+import json
+import boto3
+import os
+import sys
+from datetime import datetime
+
+from config import config
 
 class ConsoleColors:
     HEADER = '\033[95m'
@@ -20,16 +24,16 @@ class ConsoleColors:
     UNDERLINE = '\033[4m'
 
 session = boto3.Session(
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY']
+    aws_access_key_id=config.aws.access_key_id,
+    aws_secret_access_key=config.aws.secret_access_key
 )
 
-lambda_client = session.client('lambda', region_name=config['AWS']['REGION'])
-s3_client = session.client('s3', region_name=config['AWS']['REGION'])
+lambda_client = session.client('lambda', region_name=config.aws.region)
+s3_client = session.client('s3', region_name=config.aws.region)
 
-zip_file = config['DEPLOYMENT']['ZIP_FILE']
-function_name = config['DEPLOYMENT']['LAMBDA_FUNCTION_NAME']
-deployment_bucket = config['DEPLOYMENT']['DEPLOYMENT_BUCKET']
+zip_file = config.deployment.zip_file
+function_name = config.deployment.lambda_function_name
+deployment_bucket = config.deployment.deployment_bucket
 
 def is_possibly_dev_environment():
     """Check if the current environment is possibly a development environment.

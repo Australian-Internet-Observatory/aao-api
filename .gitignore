@@ -8,7 +8,7 @@ lambda-deployment-package.zip
 
 # Config - SECRET DO NOT SHARE!!!
 config.ini
-config.prod.ini
+config.*.ini
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

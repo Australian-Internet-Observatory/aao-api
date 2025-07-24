@@ -2,17 +2,14 @@ from botocore.exceptions import ClientError
 from db.clients.base_storage_client import BaseStorageClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from configparser import ConfigParser
+from config import config
 from models.base import Base as BaseORM
 
-config = ConfigParser()
-config.read('config.ini')
-
-DB_HOST = config.get('POSTGRES', 'HOST')
-DB_PORT = config.get('POSTGRES', 'PORT')
-DB_DATABASE = config.get('POSTGRES', 'DATABASE')
-DB_USERNAME = config.get('POSTGRES', 'USERNAME')
-DB_PASSWORD = config.get('POSTGRES', 'PASSWORD')
+DB_HOST = config.postgres.host
+DB_PORT = config.postgres.port
+DB_DATABASE = config.postgres.database
+DB_USERNAME = config.postgres.username
+DB_PASSWORD = config.postgres.password
 
 db_url = f'postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_DATABASE}'
 

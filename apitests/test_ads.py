@@ -3,15 +3,12 @@ import json
 import sys
 sys.path.append("../")
 from lambda_function import lambda_handler as local_handler
-from configparser import ConfigParser
+from config import config
 import pytest
 import requests
 
-config = ConfigParser()
-config.read('config.ini')
-
-username = config['TEST']['USERNAME']
-password = config['TEST']['PASSWORD']
+username = config.test.username
+password = config.test.password
 
 @pytest.mark.skip(reason="Helper function, not a test")
 def get_login_token():

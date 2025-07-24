@@ -2,15 +2,12 @@ import boto3
 import os
 import json
 
-from configparser import ConfigParser
-
-config = ConfigParser()
-config.read('config.ini')
+from config import config
 
 session_sydney = boto3.Session(
     region_name='ap-southeast-2',
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY']
+    aws_access_key_id=config.aws.access_key_id,
+    aws_secret_access_key=config.aws.secret_access_key
 )
 
 MOBILE_OBSERVATIONS_BUCKET = 'fta-mobile-observations-v2'

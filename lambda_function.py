@@ -1,20 +1,11 @@
-from dataclasses import dataclass
-import datetime
 import traceback
-import boto3
-import dateutil.tz
 import urllib
 from middlewares import parse_body
-from middlewares.authenticate import authenticate
 from routes import parse_path_parameters, parse_query_parameters, route
-from utils import use
-import base64
 import json
 from routes import routes
 import utils.observations_sub_bucket as observations_sub_bucket
-import configparser
-config = configparser.ConfigParser()
-config.read('config.ini')
+from config import config
 
 @route('reflect', 'POST')
 def reflect(event):
@@ -51,7 +42,7 @@ def reflect(event):
 
 @route('/hello', 'GET')
 def hello():
-    api_name = config.get('DEPLOYMENT', 'LAMBDA_FUNCTION_NAME', fallback='unknown')
+    api_name = config.deployment.lambda_function_name
     return {'message': f"Hello from {api_name}!"}
 
 @route('/hello/{user_id}', 'GET')

@@ -504,3 +504,13 @@ To allow management of external user identities, we need to implement the follow
 - [x] Add a new endpoint [POST] `/users/external/{user_id}/disable` to disable an external user
 - [x] Add a new endpoint [DELETE] `/users/external/{user_id}` to delete an external user - this will delete the user from both `users` and `users_identities` tables
 - [x] Add a new endpoint [GET] `/users/external/{user_id}` to get the details of an external user
+
+## Other Issues
+
+- [ ] Computing the `LATEST_READY_INDEX` in `rdo_open_search.py` causes issues with building the documentation on GitHub Actions as it does not have access to the `config.ini` file.
+
+> [!NOTE]
+>
+> This seems to also affect other modules that requires access to the `config.ini` file for configuration, such as the `rds_storage_client.py` when building the database url.
+>
+> Can be addressed by centralising configuration loading in a single module (`config.py`) and importing it where needed.

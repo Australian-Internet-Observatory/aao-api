@@ -1,15 +1,12 @@
 import boto3
-from configparser import ConfigParser
+from config import config
 from utils import jwt
 from db.shared_repositories import users_repository
 
-config = ConfigParser()
-config.read('config.ini')
-
 session_us_east = boto3.Session(
     region_name='us-east-2',
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY']
+    aws_access_key_id=config.aws.access_key_id,
+    aws_secret_access_key=config.aws.secret_access_key
 )
 
 def is_user_exists(user_id: str) -> bool:

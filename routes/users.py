@@ -8,9 +8,7 @@ from urllib.parse import unquote
 import time
 from db.shared_repositories import users_repository, user_identities_repository
 
-from configparser import ConfigParser
-config = ConfigParser()
-config.read('config.ini')
+from config import config
 
 
 def get_user_dict(user: User, identity: UserIdentity=None):
