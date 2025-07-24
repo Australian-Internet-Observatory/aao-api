@@ -221,13 +221,6 @@ def change_user_role(event, response):
     ---
     tags:
         - users
-    parameters:
-        - in: path
-          name: user_id
-          required: true
-          schema:
-              type: string
-          description: The ID of the user to change role for
     requestBody:
         required: true
         content:
@@ -306,13 +299,6 @@ def edit_user(event, response):
     ---
     tags:
         - users
-    parameters:
-        - in: path
-          name: username
-          required: true
-          schema:
-              type: string
-          description: The username of the user to edit
     requestBody:
         required: true
         content:
@@ -510,13 +496,6 @@ def get_user(event, response):
     ---
     tags:
         - users
-    parameters:
-        - in: path
-          name: username
-          required: true
-          schema:
-              type: string
-          description: The username of the user to get
     responses:
         200:
             description: A successful response
@@ -621,13 +600,6 @@ def delete_user(event, response):
     ---
     tags:
         - users
-    parameters:
-        - in: path
-          name: username
-          required: true
-          schema:
-              type: string
-          description: The username of the user to delete
     responses:
         200:
             description: User deleted successfully

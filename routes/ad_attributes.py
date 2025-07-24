@@ -36,22 +36,6 @@ def get_attributes(event, response):
     ---
     tags:
         - ads/attributes
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -138,22 +122,6 @@ def add_properties(event, response):
     ---
     tags:
         - ads/attributes
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     requestBody:
         required: true
         content:
@@ -249,27 +217,6 @@ def get_single_attribute(event, response):
     ---
     tags:
         - ads/attributes
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: attribute_key
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -339,27 +286,6 @@ def delete_properties(event, response):
     ---
     tags:
         - ads/attributes
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: attribute_key
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response

@@ -1,6 +1,6 @@
 ---
 created: 2025-07-10
-updated: 2025-07-16
+updated: 2025-07-24
 author: Dan Tran
 updated_by: Dan Tran
 ---
@@ -58,6 +58,7 @@ erDiagram
     string full_name "Optional"
     boolean enabled
     string role "admin, user"
+    string primary_email "Optional"
   }
   UserIdentity {
     string user_id PK,FK
@@ -299,7 +300,7 @@ WHERE u.id IS NULL;
 -- Should return 0
 ```
 
-### [ ] Update the API Endpoints - Local Authentication
+### [x] Update the API Endpoints - Local Authentication
 
 The breaking changes to the `User` model include removing the `username` and `password` fields, and introducing the `user_identities` table for managing user authentication. The API endpoints will need to be updated accordingly.
 
@@ -507,7 +508,7 @@ To allow management of external user identities, we need to implement the follow
 
 ## Other Issues
 
-- [ ] Computing the `LATEST_READY_INDEX` in `rdo_open_search.py` causes issues with building the documentation on GitHub Actions as it does not have access to the `config.ini` file.
+- [x] Computing the `LATEST_READY_INDEX` in `rdo_open_search.py` causes issues with building the documentation on GitHub Actions as it does not have access to the `config.ini` file.
 
 > [!NOTE]
 >

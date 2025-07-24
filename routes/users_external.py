@@ -105,13 +105,6 @@ def enable_external_user(event, response):
     ---
     tags:
         - users
-    parameters:
-        - in: path
-          name: user_id
-          required: true
-          schema:
-              type: string
-          description: The ID of the external user to enable
     responses:
         200:
             description: User enabled successfully
@@ -196,13 +189,6 @@ def disable_external_user(event, response):
     ---
     tags:
         - users
-    parameters:
-        - in: path
-          name: user_id
-          required: true
-          schema:
-              type: string
-          description: The ID of the external user to disable
     responses:
         200:
             description: User disabled successfully
@@ -287,13 +273,6 @@ def delete_external_user(event, response):
     ---
     tags:
         - users
-    parameters:
-        - in: path
-          name: user_id
-          required: true
-          schema:
-              type: string
-          description: The ID of the external user to delete
     responses:
         200:
             description: User deleted successfully
@@ -384,13 +363,6 @@ def get_external_user(event, response):
     ---
     tags:
         - users
-    parameters:
-        - in: path
-          name: user_id
-          required: true
-          schema:
-              type: string
-          description: The ID of the external user to get
     responses:
         200:
             description: A successful response

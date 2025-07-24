@@ -298,12 +298,6 @@ def get_access_cache(event, response):
     ---
     tags:
         - ads
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -392,13 +386,6 @@ def get_observer_seen_ads_last_7_days(event, response: Response):
     ---
     tags:
         - ads
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          description: The full ID of the observer.
-          schema:
-              type: string
     responses:
         200:
             description: A list of ad paths seen by the observer in the last 7 days.
@@ -743,22 +730,6 @@ def get_stitching_frames_presigned(event, response):
     ---
     tags:
         - ads
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -841,22 +812,6 @@ def get_frames_presigned(event, response):
     ---
     tags:
         - ads
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1138,22 +1093,6 @@ def get_ad_rdo(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1198,22 +1137,6 @@ def get_ad_ocr_data(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1285,22 +1208,6 @@ def get_ad_raw_ocr_data(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1377,22 +1284,6 @@ def get_ad_dimensions(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1444,22 +1335,6 @@ def get_meta_candidates(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1516,22 +1391,6 @@ def request_index(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response

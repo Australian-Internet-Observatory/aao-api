@@ -82,12 +82,6 @@ def get_tag(event, response: Response, context):
     ---
     tags:
       - tags
-    parameters:
-      - name: tag_id
-        in: path
-        required: true
-        schema:
-          type: string
     responses:
       200:
         description: Tag retrieved successfully
@@ -112,12 +106,6 @@ def update_tag(event, response: Response, context):
     ---
     tags:
       - tags
-    parameters:
-      - name: tag_id
-        in: path
-        required: true
-        schema:
-          type: string
     requestBody:
       required: true
       content:
@@ -181,12 +169,6 @@ def delete_tag(event, response: Response, context):
     ---
     tags:
       - tags
-    parameters:
-      - name: tag_id
-        in: path
-        required: true
-        schema:
-          type: string
     responses:
       200:
         description: Tag deleted successfully
@@ -227,22 +209,6 @@ def get_tags_for_ad(event, response: Response, context):
     ---
     tags:
       - ads/tags
-    parameters:
-      - in: path
-        name: observer_id
-        required: true
-        schema:
-          type: string
-      - in: path
-        name: timestamp
-        required: true
-        schema:
-          type: string
-      - in: path
-        name: ad_id
-        required: true
-        schema:
-          type: string
     responses:
       200:
         description: A successful response
@@ -290,22 +256,6 @@ def update_tags_for_ad(event, response: Response, context):
     ---
     tags:
       - ads/tags
-    parameters:
-      - in: path
-        name: observer_id
-        required: true
-        schema:
-          type: string
-      - in: path
-        name: timestamp
-        required: true
-        schema:
-          type: string
-      - in: path
-        name: ad_id
-        required: true
-        schema:
-          type: string
     requestBody:
       required: true
       content:

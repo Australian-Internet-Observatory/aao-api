@@ -147,13 +147,6 @@ def get_session(event, response, context):
     ---
     tags:
       - guests
-    parameters:
-      - name: key
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The key of the session.
     responses:
       200:
         description: A JSON object containing the session token
@@ -221,13 +214,6 @@ def delete_session(event, response, context):
     ---
     tags:
       - guests
-    parameters:
-      - name: key
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The key of the session.
     responses:
       200:
         description: A JSON object indicating success
@@ -285,13 +271,6 @@ def update_session(event, response, context):
     ---
     tags:
       - guests
-    parameters:
-      - name: key
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The key of the session.
     requestBody:
       required: true
       content:

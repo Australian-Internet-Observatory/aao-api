@@ -137,12 +137,6 @@ def get_project(event, response, context):
     ---
     tags:
       - projects
-    parameters:
-      - in: path
-        name: project_id
-        required: true
-        schema:
-          type: string
     responses:
       200:
         description: Project retrieved successfully
@@ -169,12 +163,6 @@ def update_project(event, response, context):
     ---
     tags:
       - projects
-    parameters:
-      - in: path
-        name: project_id
-        required: true
-        schema:
-          type: string
     requestBody:
       required: true
       content:
@@ -214,12 +202,6 @@ def delete_project(event, response, context):
     ---
     tags:
       - projects
-    parameters:
-      - in: path
-        name: project_id
-        required: true
-        schema:
-          type: string
     responses:
       204:
         description: Project deleted successfully
