@@ -41,15 +41,14 @@ def is_possibly_dev_environment():
     This can be used to guard against accidental deployments to production.
     """
     KEYWORDS = ['dev', 'development', 'test', 'staging']
-    POSSIBLE_CONFIG_FIELDS = [
-        ('DEPLOYMENT', 'LAMBDA_FUNCTION_NAME'),
-        ('DEPLOYMENT', 'ZIP_FILE'),
-        ('POSTGRES', 'DATABASE'),
+    possible_configs = [
+        config.deployment.lambda_function_name,
+        config.deployment.zip_file,
+        config.postgres.database,
     ]
-    for section, key in POSSIBLE_CONFIG_FIELDS:
-        value = config.get(section, key, fallback='').lower()
-        if any(keyword in value for keyword in KEYWORDS):
-            print(f'Warning: {section}.{key} contains a development keyword: {value}')
+    for value in possible_configs:
+        if any(keyword in value.lower() for keyword in KEYWORDS):
+            print(f'{ConsoleColors.WARNING}[WARNING] Possible development environment detected: {value}{ConsoleColors.DEFAULT}')
             return True
     return False
 
