@@ -3,18 +3,19 @@
 import json
 import boto3
 
-from configparser import ConfigParser
-config = ConfigParser()
-config.read('config.ini')
+import json
+import boto3
+
+from config import config
 
 session = boto3.Session(
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY']
+    aws_access_key_id=config.aws.access_key_id,
+    aws_secret_access_key=config.aws.secret_access_key
 )
 
-lambda_client = session.client('lambda', region_name=config['AWS']['REGION'])
+lambda_client = session.client('lambda', region_name=config.aws.region)
 
-function_name = config['DEPLOYMENT']['LAMBDA_FUNCTION_NAME']
+function_name = config.deployment.lambda_function_name
 
 def invoke_lambda():
     event = {

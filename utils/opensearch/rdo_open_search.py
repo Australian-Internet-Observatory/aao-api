@@ -1,4 +1,4 @@
-from configparser import ConfigParser
+from config import config
 from dataclasses import dataclass, field
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from utils import observations_sub_bucket
@@ -8,21 +8,18 @@ import boto3
 from utils.indexer.registry import IndexRegistry
 from utils.reduce_rdo.reduce_rdo import RdoReducer
 
-config = ConfigParser()
-config.read('config.ini')
-
-OPEN_SEARCH_ENDPOINT = config['OPEN_SEARCH']['ENDPOINT']
+OPEN_SEARCH_ENDPOINT = config.open_search.endpoint
 SERVICE = 'aoss'
-AWS_CONFIG = config['AWS']
+AWS_CONFIG = config.aws
 
 session = boto3.Session(
-    region_name=AWS_CONFIG['REGION'],
-    aws_access_key_id=AWS_CONFIG['ACCESS_KEY_ID'],
-    aws_secret_access_key=AWS_CONFIG['SECRET_ACCESS_KEY']
+    region_name=AWS_CONFIG.region,
+    aws_access_key_id=AWS_CONFIG.access_key_id,
+    aws_secret_access_key=AWS_CONFIG.secret_access_key
 )
 credentials = session.get_credentials()
 awsauth = AWS4Auth(credentials.access_key, credentials.secret_key,
-                   AWS_CONFIG['REGION'], SERVICE, session_token=credentials.token)
+                   AWS_CONFIG.region, SERVICE, session_token=credentials.token)
 
 client = OpenSearch(
     hosts=[OPEN_SEARCH_ENDPOINT],
@@ -69,7 +66,11 @@ class AdWithRDO:
             
         return self.rdo_content
 
-LATEST_READY_INDEX = IndexRegistry().get_latest(status='ready').name
+try:
+    LATEST_READY_INDEX = IndexRegistry().get_latest(status='ready').name
+except Exception as e:
+    print(f"Error getting latest ready index: {e}")
+    LATEST_READY_INDEX = None
 
 class RdoOpenSearch:
     def __init__(self, index: str | None = LATEST_READY_INDEX):

@@ -2,19 +2,14 @@ from botocore.exceptions import ClientError
 from db.clients.base_storage_client import BaseStorageClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from configparser import ConfigParser
-from sqlalchemy.orm import declarative_base
+from config import config
+from models.base import Base as BaseORM
 
-BaseORM = declarative_base()
-
-config = ConfigParser()
-config.read('config.ini')
-
-DB_HOST = config.get('POSTGRES', 'HOST')
-DB_PORT = config.get('POSTGRES', 'PORT')
-DB_DATABASE = config.get('POSTGRES', 'DATABASE')
-DB_USERNAME = config.get('POSTGRES', 'USERNAME')
-DB_PASSWORD = config.get('POSTGRES', 'PASSWORD')
+DB_HOST = config.postgres.host
+DB_PORT = config.postgres.port
+DB_DATABASE = config.postgres.database
+DB_USERNAME = config.postgres.username
+DB_PASSWORD = config.postgres.password
 
 db_url = f'postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_DATABASE}'
 
@@ -50,7 +45,6 @@ class RdsStorageClient(BaseStorageClient):
     def connect(self):
         """Connect to the RDS service."""
         self.session_maker, self.engine = get_db_session(self.db_url)
-        self.base_orm.metadata.create_all(self.engine)
         if self.session_maker and self.engine:
             self.connected = True
         else:

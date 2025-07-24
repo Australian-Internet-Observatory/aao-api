@@ -298,12 +298,6 @@ def get_access_cache(event, response):
     ---
     tags:
         - ads
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -392,13 +386,6 @@ def get_observer_seen_ads_last_7_days(event, response: Response):
     ---
     tags:
         - ads
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          description: The full ID of the observer.
-          schema:
-              type: string
     responses:
         200:
             description: A list of ad paths seen by the observer in the last 7 days.
@@ -662,16 +649,20 @@ def get_batch_ads_presign(event, response: Response):
                 'success': False,
                 'comment': f'Invalid metadata type: {metadata_type}. Accepted types are: {ACCEPTED_METADATA_TYPES}'
             })
+    caller = event['user']
+    if caller is None or caller.id is None:
+        return response.status(400).json({
+            'success': False,
+            'comment': 'Invalid request, caller is not authenticated'
+        })
     
     # Save the enriched ads to a file and return a presigned URL
-    username = event.get('user', {}).get('username', None)
-    if username is None:
-        raise ValueError("user is None")
+    user_id = caller.id
     
     # Hash the body to create a unique key for the batch to allow for caching
     key = hashlib.sha256(json.dumps({"ads": sorted(ads, key=lambda ad: ad.get('ad_id', None)), "types": sorted(metadata_types)}).encode('utf-8')).hexdigest()
     filename = f'{key}.json'
-    path = f'batch_ads/{username}/{filename}'
+    path = f'batch_ads/{user_id}/{filename}'
     
     # Check if the batch already exists in the metadata bucket
     use_cache = 'rdo' in metadata_types
@@ -739,22 +730,6 @@ def get_stitching_frames_presigned(event, response):
     ---
     tags:
         - ads
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -837,22 +812,6 @@ def get_frames_presigned(event, response):
     ---
     tags:
         - ads
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1134,22 +1093,6 @@ def get_ad_rdo(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1194,22 +1137,6 @@ def get_ad_ocr_data(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1281,22 +1208,6 @@ def get_ad_raw_ocr_data(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1373,22 +1284,6 @@ def get_ad_dimensions(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1440,22 +1335,6 @@ def get_meta_candidates(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1512,22 +1391,6 @@ def request_index(event, response):
     ---
     tags:
         - rdo
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -1706,8 +1569,6 @@ def query(event, response):
         'method': method,
         'args': args
     }
-    print(f"User '{event['user']['username']}' requested ads with query:")
-    print(json.dumps(query_dict, indent=4))
     
     session_id = event['body'].get('session_id', None)
     context = event['body'].get('context', {})

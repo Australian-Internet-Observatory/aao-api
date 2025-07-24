@@ -11,14 +11,12 @@ import json
 import utils.metadata_sub_bucket as metadata
 from models.project import Project, ProjectMemberRole, TeamMember, Cell
 
-from configparser import ConfigParser
-config = ConfigParser()
-config.read('config.ini')
+from config import config
 
 session = boto3.Session(
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY'],
-    region_name='ap-southeast-2'
+    aws_access_key_id=config.aws.access_key_id,
+    aws_secret_access_key=config.aws.secret_access_key,
+    region_name=config.aws.region
 )
 
 PROJECTS_FOLDER_PREFIX = 'projects'
@@ -43,7 +41,7 @@ def authorise_member(*roles: list[ProjectMemberRole]):
             except Exception as e:
                 return response.status(404).json({'message': f'Failed to parse project: {e}'})
             
-            member = get_project_member(project, event['user']['username'])
+            member = get_project_member(project, event['identity'].provider_user_id)
             if not member or member.get("role") not in [role.value for role in roles]:
                 return response.status(403).json({'message': 'You do not have permission to perform this action'})
             return func(event, response, context)
@@ -87,13 +85,14 @@ def create_project(event, response, context):
     """
     data = event['body']
     project_id = hashlib.sha256(f"{data['name']}{datetime.now()}".encode()).hexdigest()
+    username = event['identity'].provider_user_id
     project = Project(
         id=project_id,
         name=data['name'],
         description=data['description'],
-        ownerId=event['user']['username'],
+        ownerId=username,
         team=[{
-                'username': event['user']['username'],
+                'username': username,
                 'role': 'admin'
             }],
         cells=[]
@@ -120,12 +119,13 @@ def list_projects(event, response, context):
                 $ref: '#/components/schemas/Project'
     """
     user = event['user']
+    username = event['identity'].provider_user_id
     user_projects = []
     for project_id in metadata.list_objects(PROJECTS_FOLDER_PREFIX):
         print(project_id)
         project_data = metadata.get_object(project_id)
         project = json.loads(project_data)
-        if project['ownerId'] == user['username'] or user['role'] == 'admin' or any(member['username'] == user['username'] for member in project['team']):
+        if project['ownerId'] == username or user.role == 'admin' or any(member['username'] == username for member in project['team']):
             user_projects.append(project)
     return user_projects
 
@@ -137,12 +137,6 @@ def get_project(event, response, context):
     ---
     tags:
       - projects
-    parameters:
-      - in: path
-        name: project_id
-        required: true
-        schema:
-          type: string
     responses:
       200:
         description: Project retrieved successfully
@@ -169,12 +163,6 @@ def update_project(event, response, context):
     ---
     tags:
       - projects
-    parameters:
-      - in: path
-        name: project_id
-        required: true
-        schema:
-          type: string
     requestBody:
       required: true
       content:
@@ -214,12 +202,6 @@ def delete_project(event, response, context):
     ---
     tags:
       - projects
-    parameters:
-      - in: path
-        name: project_id
-        required: true
-        schema:
-          type: string
     responses:
       204:
         description: Project deleted successfully

@@ -3,10 +3,7 @@ import boto3
 from botocore.exceptions import ClientError
 from db.clients.base_storage_client import BaseStorageClient
 
-from configparser import ConfigParser
-
-config = ConfigParser()
-config.read('config.ini')
+from config import config
 
 def create_file_name_from_keys(keys: dict, order=list[str]) -> str:
     """Create a file name from the keys dictionary.
@@ -61,8 +58,8 @@ class S3StorageClient(BaseStorageClient):
     def connect(self):
         """Connect to the S3 service."""
         session = boto3.Session(
-            aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-            aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY'],
+            aws_access_key_id=config.aws.access_key_id,
+            aws_secret_access_key=config.aws.secret_access_key,
             region_name='ap-southeast-2'
         )
         self.s3 = session.client('s3')

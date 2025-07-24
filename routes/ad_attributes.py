@@ -6,11 +6,8 @@ from routes import route
 from middlewares.authenticate import authenticate
 from utils import use
 import boto3
+from config import config
 import time
-
-from configparser import ConfigParser
-config = ConfigParser()
-config.read('config.ini')
 
 ad_attributes_repository = Repository(
     model=AdAttribute,
@@ -22,8 +19,8 @@ ad_attributes_repository = Repository(
 )
 
 session = boto3.Session(
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY'],
+    aws_access_key_id=config.aws.access_key_id,
+    aws_secret_access_key=config.aws.secret_access_key,
     region_name='ap-southeast-2'
 )
 
@@ -39,22 +36,6 @@ def get_attributes(event, response):
     ---
     tags:
         - ads/attributes
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -141,22 +122,6 @@ def add_properties(event, response):
     ---
     tags:
         - ads/attributes
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
     requestBody:
         required: true
         content:
@@ -217,7 +182,7 @@ def add_properties(event, response):
     
     key = attribute['key']
     current_time = int(time.time())
-    username = event['user']['username']
+    user_id = event['user'].id
     
     try:
         # Create or update attribute
@@ -226,9 +191,9 @@ def add_properties(event, response):
             key=key,
             value=str(attribute['value']),
             created_at=current_time,
-            created_by=username,
+            created_by=user_id,
             modified_at=current_time,
-            modified_by=username
+            modified_by=user_id
         )
         with ad_attributes_repository.create_session() as repository_session:
             repository_session.create_or_update(new_attr)
@@ -252,27 +217,6 @@ def get_single_attribute(event, response):
     ---
     tags:
         - ads/attributes
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: attribute_key
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response
@@ -342,27 +286,6 @@ def delete_properties(event, response):
     ---
     tags:
         - ads/attributes
-    parameters:
-        - in: path
-          name: observer_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: timestamp
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: ad_id
-          required: true
-          schema:
-              type: string
-        - in: path
-          name: attribute_key
-          required: true
-          schema:
-              type: string
     responses:
         200:
             description: A successful response

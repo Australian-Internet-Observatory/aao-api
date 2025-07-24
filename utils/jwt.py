@@ -1,82 +1,229 @@
+from dataclasses import dataclass
 import json
 import time
 import hashlib
 import base64
-from models.user import User
+import uuid
+from models.user import User, UserIdentity, UserIdentityORM, UserORM
 from utils.hash_password import hash_password
-from configparser import ConfigParser
+from config import config
+from db.shared_repositories import users_repository, user_identities_repository
 
-config = ConfigParser()
-config.read('config.ini')
+JWT_SECRET = config.jwt.secret
 
-SESSION_FOLDER_PREFIX = 'guest-sessions'
-
-from db.shared_repositories import users_repository
-
-def get_user_data(username: str) -> dict:
+def to_base64(data: dict) -> str:
     """
-    Retrieve user data from S3 based on the provided username.
-
+    Convert a dictionary to a base64 encoded string.
+    
     Args:
-        username (str): The username of the user.
-
+        data (dict): The dictionary to encode.
+        
     Returns:
-        dict: The user data as a dictionary, or None if an error occurs.
+        str: Base64 encoded string of the JSON representation of the dictionary.
     """
-    try:
-        with users_repository.create_session() as session:
-            user = session.get_first({'username': username})
-            if user is None:
-                return None
-            data = user.model_dump()
-            # Ensure the password is not included in the returned data
-            return {
-                'username': data['username'],
-                'full_name': data.get('full_name', ''),
-                'enabled': data.get('enabled', True),
-                'password': data.get('password', None),
-                'role': data.get('role', 'user'),
-                'token': data.get('current_token', None)
-            }
-    except Exception as e:
-        return None
+    return base64.b64encode(json.dumps(data).encode("utf-8")).decode("utf-8")
 
-def create_token(user_data: User, expire: int = None) -> tuple[str, dict]:
+@dataclass
+class JsonWebToken:
+    """
+    Class to handle JSON Web Token (JWT) creation, decoding, and verification.
+    """
+    sub: str  # subject identifier (user ID)
+    iat: int  # issued at timestamp
+    exp: int  # expiration timestamp
+    role: str  # user role
+    full_name: str  # user's full name
+    enabled: bool  # whether the user is enabled
+    provider: str | None = None  # identity provider (e.g., 'local', 'cilogon', None for guest)
+    
+    @property
+    def payload(self) -> dict:
+        """
+        Convert the JsonWebToken instance to a dictionary payload.
+        
+        Returns:
+            dict: The JWT payload.
+        """
+        return {
+            "sub": self.sub,
+            "iat": self.iat,
+            "exp": self.exp,
+            "role": self.role,
+            "full_name": self.full_name,
+            "enabled": self.enabled,
+            "provider": self.provider
+        }
+    
+    @property
+    def token(self) -> str:
+        """
+        Generate the JWT token string from the instance data.
+        
+        Returns:
+            str: The encoded JWT token.
+        """
+        header = {"alg": "HS256", "typ": "JWT"}
+        header_base64 = to_base64(header)
+        payload_base64 = to_base64(self.payload)
+        
+        signature = hashlib.sha256(
+            f"{header_base64}.{payload_base64}.{JWT_SECRET}".encode("utf-8")
+        ).hexdigest()
+        return f"{header_base64}.{payload_base64}.{signature}"
+    
+    @property
+    def is_expired(self) -> bool:
+        """
+        Check if the JWT token is expired.
+        
+        Returns:
+            bool: True if the token is expired, False otherwise.
+        """
+        current_time = time.time()
+        return current_time > self.exp
+    
+    @staticmethod
+    def guest_token() -> 'JsonWebToken':
+        """
+        Create a JWT token for guest users.
+        
+        Returns:
+            JsonWebToken: An instance of JsonWebToken for guest access.
+        """
+        return JsonWebToken(
+            sub=str(uuid.uuid4()),
+            iat=int(time.time()),
+            exp=int(time.time()) + config.jwt.expiration,
+            role="guest",
+            full_name="Guest",
+            enabled=True,
+            provider=None
+        )
+    
+    @staticmethod
+    def from_token(token: str) -> 'JsonWebToken':
+        """
+        Decode a JWT token string into a JsonWebToken instance, if the signature is valid.
+        
+        Args:
+            token (str): The JWT token to decode.
+            
+        Returns:
+            JsonWebToken: An instance of JsonWebToken with the decoded data.
+        """
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError("Invalid token format")
+        
+        header_base64, payload_base64, signature = parts
+        payload = json.loads(base64.b64decode(payload_base64).decode("utf-8"))
+        
+        expected_signature = hashlib.sha256(
+            f"{header_base64}.{payload_base64}.{JWT_SECRET}".encode("utf-8")
+        ).hexdigest()
+        
+        if signature != expected_signature:
+            raise ValueError("Invalid token signature")
+        
+        return JsonWebToken(
+            sub=payload["sub"],
+            iat=payload["iat"],
+            exp=payload["exp"],
+            role=payload["role"],
+            full_name=payload["full_name"],
+            enabled=payload["enabled"],
+            provider=payload.get("provider")
+        )
+    
+    @staticmethod
+    def from_identity(user_identity: UserIdentity, expire: int = None) -> 'JsonWebToken':
+        """
+        Create a JsonWebToken instance from a UserIdentityORM object.
+        
+        Args:
+            user_identity (UserIdentityORM): The user identity data object.
+            expire (int, optional): The expiration time of the token in seconds. Defaults to None (use the default expiration time from the config).
+        
+        Returns:
+            JsonWebToken: An instance of JsonWebToken with the user's identity data.
+        """
+        with users_repository.create_session() as user_session:
+            user = user_session.get_first({'id': user_identity.user_id})
+            if not user:
+                raise ValueError("User not found for the given identity")
+        
+        return JsonWebToken.from_user(user, provider=user_identity.provider, expire=expire)
+    
+    @staticmethod
+    def from_user(user: User, provider: str = None, expire: int = None):
+        """
+        Create a JsonWebToken instance from a UserORM object.
+        
+        Args:
+            user (UserORM): The user data object.
+            provider (str, optional): The identity provider (e.g., 'local', 'cilogon', None for guest).
+            expire (int, optional): The expiration time of the token in seconds. Defaults to None (use the default expiration time from the config).
+        
+        Returns:
+            JsonWebToken: An instance of JsonWebToken with the user's data.
+        """
+        current_time = time.time()
+        if expire is None:
+            expiration_time = current_time + config.jwt.expiration
+        else:
+            expiration_time = current_time + expire
+        
+        return JsonWebToken(
+            sub=user.id,
+            iat=int(current_time),
+            exp=int(expiration_time),
+            role=user.role,
+            full_name=user.full_name,
+            enabled=user.enabled,
+            provider=provider
+        )
+    
+    @property
+    def identity(self) -> UserIdentity:
+        """
+        Get the UserIdentity object associated with this token.
+        
+        Returns:
+            UserIdentity: The user identity object.
+        """
+        with user_identities_repository.create_session() as session:
+            return session.get_first({
+                'user_id': self.sub,
+                'provider': self.provider
+            })
+            
+    @property
+    def user(self) -> User:
+        """
+        Get the User object associated with this token.
+        
+        Returns:
+            User: The user object.
+        """
+        with users_repository.create_session() as session:
+            return session.get_first({
+                'id': self.sub
+            })
+
+def create_token(user: UserORM, provider: str = None, expire: int = None) -> tuple[str, dict]:
     """
     Create a JSON Web Token (JWT) for the given user data, and return the token and its payload.
 
     Args:
-        user_data (User): The user data object.
+        user (UserORM): The user data object.
+        provider (str, optional): The identity provider (e.g., 'local', 'cilogon', None for guest).
         expire (int, optional): The expiration time of the token in seconds. Defaults to None (use the default expiration time from the config).
 
     Returns:
-        str: The generated JWT.
-        dict: The payload of the JWT.
+        tuple[str, dict]: The generated JWT and its payload.
     """
-    current_time = time.time()
-    if expire is None:
-        expiration_time = current_time + config.getint('JWT', 'EXPIRATION')
-    else:
-        expiration_time = current_time + expire
-    header = {
-        "alg": "HS256",
-        "typ": "JWT"
-    }
-    header_base64 = base64.b64encode(json.dumps(header).encode('utf-8')).decode('utf-8')
-    # Copy all fields (except the password and token) from the user data to the payload
-    copied_data = dict(user_data)
-    if 'password' in copied_data:
-        copied_data.pop('password')
-    if 'token' in copied_data:
-        copied_data.pop('token')
-    payload = {
-        "exp": expiration_time,
-        **copied_data
-    }
-    payload_base64 = base64.b64encode(json.dumps(payload).encode('utf-8')).decode('utf-8')
-    secret = config['JWT']['SECRET']
-    signature = hashlib.sha256(f'{header_base64}.{payload_base64}.{secret}'.encode('utf-8')).hexdigest()
-    return f'{header_base64}.{payload_base64}.{signature}', payload
+    jwt = JsonWebToken.from_user(user, provider=provider, expire=expire)
+    return jwt.token, jwt.payload
 
 def decode_token(token: str) -> dict:
     """
@@ -88,12 +235,12 @@ def decode_token(token: str) -> dict:
     Returns:
         dict: The payload of the JWT.
     """
-    parts = token.split('.')
-    if len(parts) != 3:
+    try:
+        jwt = JsonWebToken.from_token(token)
+        return jwt.payload
+    except (ValueError, json.JSONDecodeError, KeyError):
         return None
-    header_base64, payload_base64, signature = parts
-    payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
-    return payload
+
 
 def verify_token(token: str) -> bool:
     """
@@ -105,38 +252,16 @@ def verify_token(token: str) -> bool:
     Returns:
         bool: True if the token is valid, False otherwise.
     """
-    parts = token.split('.')
-    if len(parts) != 3:
+    try:
+        jwt = JsonWebToken.from_token(token)
+        return not jwt.is_expired
+    except (ValueError, json.JSONDecodeError, KeyError):
         return False
-    header_base64, payload_base64, signature = parts
-    secret = config['JWT']['SECRET']
-    expected_signature = hashlib.sha256(f'{header_base64}.{payload_base64}.{secret}'.encode('utf-8')).hexdigest()
-    is_valid = signature == expected_signature
-    # Ensure the token exists in the user's sessions, and is not disabled (deleted)
-    if not is_valid:
-        return False
-    payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
-    exp = payload['exp']
-    
-    # If the role is 'guest' - allow
-    # TODO: Verify guest sessions
-    if 'role' in payload and payload['role'] == 'guest':
-        return True
-    
-    # Ensure the token exists
-    user_data = get_user_data(payload['username'])
-    if user_data is None or user_data.get('token') != token:
-        return False
-    
-    # Ensure the token has not expired
-    current_time = time.time()
-    if current_time > exp:
-        return False
-    return True
+
 
 def create_session_token(username: str, password: str) -> str:
     """
-    Create a session token for the user with the given username and password. This also disables the most recent session token for the user.
+    Create a session token for the user with the given username and password.
 
     Args:
         username (str): The username of the user.
@@ -148,112 +273,113 @@ def create_session_token(username: str, password: str) -> str:
     Raises:
         Exception: If the credentials are invalid.
     """
-    user_data = get_user_data(username)
-    hashed_password = hash_password(password)
-    if user_data is None or user_data['password'] != hashed_password:
-        raise Exception("INVALID_CREDENTIALS")
+    # Look up user identity for local authentication
+    with user_identities_repository.create_session() as identity_session:
+        user_identity = identity_session.get_first({
+            'provider': 'local',
+            'provider_user_id': username
+        })
+        
+        if user_identity is None:
+            print(f"User {username} not found")
+            raise Exception("INVALID_CREDENTIALS")
+        
+        # Validate password
+        hashed_password = hash_password(password)
+        if user_identity.password != hashed_password:
+            print(f"Invalid password for user {username}")
+            raise Exception("INVALID_CREDENTIALS")
+        
+        user_id = user_identity.user_id
     
-    token, payload = create_token(user_data)
-    
-    # Get the user data and update the current token
-    with users_repository.create_session() as session:
-        user = session.get_first({'username': username})
+    # Get user data
+    with users_repository.create_session() as user_session:
+        user = user_session.get_first({'id': user_id})
         if user is None:
-            raise Exception("User not found")
-        user.current_token = token
-        session.update(user)
+            print(f"User record not found for ID {user_id}")
+            raise Exception("INVALID_CREDENTIALS")
     
+    print(f"Password validation successful for {username}")
+    token, payload = create_token(user, provider='local')
     return token
 
-def refresh_session_token(token: str) -> str:
-    """Refresh a session token by extending its expiration time.
+def create_token_from_identity(user_identity) -> str:
+    """
+    Create a JWT token from a user identity record.
 
     Args:
-        token (str): The session token to refresh.
+        user_identity: UserIdentity object from the database.
 
     Returns:
-        str: The new token with the updated expiration time.
+        str: The generated JWT token.
     """
-    parts = token.split('.')
-    if len(parts) != 3:
-        raise Exception("INVALID_TOKEN")
-    header_base64, payload_base64, signature = parts
-    payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
-    # Find the user data from the payload
-    username = payload['username']
-    user_data = get_user_data(username)
-    
-    if user_data is None:
-        raise Exception("INVALID_CREDENTIALS")
-    # Ensure the token is valid
-    if user_data.get('token') != token:
-        raise Exception("INVALID_TOKEN")
-    
-    token, payload = create_token(user_data)
-    
-    # Update the user's current token
-    with users_repository.create_session() as session:
-        user = session.get_first({'username': username})
-        if user is None:
-            raise Exception("User not found")
-        user.current_token = token
-        session.update(user)
-    
-    return token
+    jwt = JsonWebToken.from_identity(user_identity)
+    return jwt.token
 
-def disable_session_token(token: str) -> bool:
+
+def create_guest_token() -> str:
     """
-    Disable a session token by deleting its corresponding session object in S3.
-
-    Args:
-        token (str): The session token to disable.
+    Create a JWT token for guest users.
 
     Returns:
-        bool: True if the token was successfully disabled, False otherwise.
+        str: The generated JWT token for guest access.
     """
-    # print("Disabling token", token, "...")
-    parts = token.split('.')
-    if len(parts) != 3:
-        return False
-    header_base64, payload_base64, signature = parts
-    payload = json.loads(base64.b64decode(payload_base64).decode('utf-8'))
-    
-    try:
-        with users_repository.create_session() as session:
-            user = session.get_first({'username': payload['username']})
-            if user is None:
-                return False
-            # Update the user's current token to None
-            user.current_token = None
-            session.update(user)
-            return True
-    except Exception as e:
-        return False
+    jwt = JsonWebToken.guest_token()
+    return jwt.token
 
 def disable_sessions_for_user(username: str) -> bool:
-    """
-    Disable all session tokens for the given username by deleting all session objects in S3.
-
-    Args:
-        username (str): The username of the user.
-
-    Returns:
-        bool: True if all sessions were successfully disabled, False otherwise.
-    """
-    try:
-        with users_repository.create_session() as session:
-            user = session.get_first({'username': username})
-            if user is None:
-                return False
-            # Update the user's current token to None
-            user.current_token = None
-            session.update(user)
-    except Exception as e:
-        return False
+    """Deprecated: Session management is now stateless with JWT tokens."""
     return True
 
-if __name__ == "__main__":
-    token = create_session_token('dantran', 'dantran')
-    # print(token)
-    # print(verify_token(token))
-    # print(get_most_recent_session_path('dantran'))
+
+def get_most_recent_session_path(username: str) -> dict:
+    """Deprecated: Session management is now stateless with JWT tokens."""
+    return None
+
+# TODO: CILogon integration
+def get_user_data(username: str) -> User | None:
+    """
+    Retrieve user data by username.
+    
+    Args:
+        username (str): The username of the user.
+        
+    Returns:
+        UserORM | None: The user data object if found, otherwise None.
+    """
+    with users_repository.create_session() as session:
+        return session.get_first({'username': username})
+
+def finalise_token_creation(username: str, user_data: dict) -> str | None:
+    """
+    Creates new token.
+    Returns the new token string or None on failure.
+    """
+
+    # Create the new JWT
+    token, payload = create_token(user_data)
+    if not token or not payload:
+        print(f"Failed to create token for user {username}")
+        return None
+    return token
+
+def create_token_after_external_auth(
+    external_user_details: dict,
+) -> str | None:
+    """
+    Finds a user based on external details and generates a token.
+    Returns token string or None on failure.
+    """
+    username = external_user_details.get("username")
+
+    if not username:
+        print("External user details missing required email field.")
+        return None
+
+    user_data = get_user_data(username)
+
+    if user_data is None:
+        print(f"User '{username}' not found.")
+        return None
+    else:
+        return finalise_token_creation(username, user_data)

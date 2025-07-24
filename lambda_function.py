@@ -1,18 +1,11 @@
-from dataclasses import dataclass
-import datetime
 import traceback
-import boto3
-import dateutil.tz
 import urllib
 from middlewares import parse_body
-from middlewares.authenticate import authenticate
 from routes import parse_path_parameters, parse_query_parameters, route
-from utils import use
-import base64
 import json
 from routes import routes
 import utils.observations_sub_bucket as observations_sub_bucket
-
+from config import config
 
 @route('reflect', 'POST')
 def reflect(event):
@@ -49,7 +42,8 @@ def reflect(event):
 
 @route('/hello', 'GET')
 def hello():
-    return {'message': 'Hello, world!'}
+    api_name = config.deployment.lambda_function_name
+    return {'message': f"Hello from {api_name}!"}
 
 @route('/hello/{user_id}', 'GET')
 def hello(event):
@@ -68,10 +62,10 @@ def handle_api_gateway_event(event_raw, context):
         
         path, query_params = parse_query_parameters(path)    
         route, path_params = parse_path_parameters(path)
-        print(f'Route: {route}')
-        print(f'Path params: {path_params}')
-        print(f'Query params: {query_params}')
-        print(f'Method: {method}')
+        # print(f'Route: {route}')
+        # print(f'Path params: {path_params}')
+        # print(f'Query params: {query_params}')
+        # print(f'Method: {method}')
         if query_params is not None and len(query_params) > 0:
             event['queryStringParameters'] = query_params
         if path_params is not None and len(path_params) > 0:

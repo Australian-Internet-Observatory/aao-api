@@ -1,13 +1,11 @@
 import boto3
 import json
 
-from configparser import ConfigParser
-config = ConfigParser()
-config.read('config.ini')
+from config import config
 
 session = boto3.Session(
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY']
+    aws_access_key_id=config.aws.access_key_id,
+    aws_secret_access_key=config.aws.secret_access_key
 )
 
 class User:

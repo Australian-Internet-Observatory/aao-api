@@ -4,21 +4,53 @@ import os
 import sys
 from datetime import datetime
 
-from configparser import ConfigParser
-config = ConfigParser()
-config.read('config.ini')
+import json
+import boto3
+import os
+import sys
+from datetime import datetime
+
+from config import config
+
+class ConsoleColors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    DEFAULT = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
 
 session = boto3.Session(
-    aws_access_key_id=config['AWS']['ACCESS_KEY_ID'],
-    aws_secret_access_key=config['AWS']['SECRET_ACCESS_KEY']
+    aws_access_key_id=config.aws.access_key_id,
+    aws_secret_access_key=config.aws.secret_access_key
 )
 
-lambda_client = session.client('lambda', region_name=config['AWS']['REGION'])
-s3_client = session.client('s3', region_name=config['AWS']['REGION'])
+lambda_client = session.client('lambda', region_name=config.aws.region)
+s3_client = session.client('s3', region_name=config.aws.region)
 
-zip_file = config['DEPLOYMENT']['ZIP_FILE']
-function_name = config['DEPLOYMENT']['LAMBDA_FUNCTION_NAME']
-deployment_bucket = config['DEPLOYMENT']['DEPLOYMENT_BUCKET']
+zip_file = config.deployment.zip_file
+function_name = config.deployment.lambda_function_name
+deployment_bucket = config.deployment.deployment_bucket
+
+def is_possibly_dev_environment():
+    """Check if the current environment is possibly a development environment.
+    
+    This can be used to guard against accidental deployments to production.
+    """
+    KEYWORDS = ['dev', 'development', 'test', 'staging']
+    possible_configs = [
+        config.deployment.lambda_function_name,
+        config.deployment.zip_file,
+        config.postgres.database,
+    ]
+    for value in possible_configs:
+        if any(keyword in value.lower() for keyword in KEYWORDS):
+            print(f'{ConsoleColors.WARNING}[WARNING] Possible development environment detected: {value}{ConsoleColors.DEFAULT}')
+            return True
+    return False
 
 # Get stage (deployment folder) from command line argument or use default
 # TODO: Consider making "dev" the default deployment folder
@@ -44,6 +76,13 @@ def deploy_lambda():
     
     This function uploads the zip file to S3 and updates the Lambda function to use the code from the S3 bucket.
     """
+    if stage.lower() == 'prod' and is_possibly_dev_environment():
+        print(f"{ConsoleColors.WARNING}[WARNING] You are deploying to production with a configuration that may indicate a development environment.{ConsoleColors.DEFAULT}")
+        confirmation = input("Do you want to continue? (yes/no): ").strip().lower()
+        if confirmation != 'yes':
+            print("Deployment cancelled.")
+            return
+    
     # Check if zip file exists
     if not os.path.exists(zip_file):
         print(f'Error: {zip_file} does not exist')

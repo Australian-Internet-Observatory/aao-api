@@ -9,6 +9,8 @@ on:
 jobs:
   generate-openapi-spec:
     runs-on: ubuntu-latest
+    env:
+      ENV: documentation
     steps:
       - uses: actions/checkout@v4
 

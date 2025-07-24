@@ -2,17 +2,14 @@
 import json
 from typing import Literal
 from lambda_function import lambda_handler as local_handler
-from configparser import ConfigParser
-
+from config import config
 from utils.hash_password import hash_password
 # Need to access the database directly as without functional authentication, it is not possible to create users through the API (which needs authentication).
-from db.shared_repositories import users_repository
+from db.shared_repositories import users_repository, user_identities_repository
+import time
 
-config = ConfigParser()
-config.read('config.ini')
-
-username = config['TEST']['USERNAME']
-password = config['TEST']['PASSWORD']
+username = config.test.username
+password = config.test.password
 
 
 
@@ -22,16 +19,26 @@ def create_test_user():
     
     This function creates a test user with the specified username and password, and assigns it an admin role.
     """
-    test_user = {
-        'username': username,
-        'password': hash_password(password),
+    # Create user in users table
+    user_data = {
         'full_name': 'Test User (Auto-generated)',
         'enabled': True,
         'role': 'admin'
     }
-    with users_repository.create_session() as session:
-        session.create(test_user)
-    # users_repository.create(test_user)
+    with users_repository.create_session() as user_session:
+        user_entity = user_session.create(user_data)
+        user_id = user_entity.id
+    
+    # Create identity in user_identities table
+    with user_identities_repository.create_session() as identity_session:
+        identity_data = {
+            'user_id': user_id,
+            'provider': 'local',
+            'provider_user_id': username,
+            'password': hash_password(password),
+            'created_at': int(time.time())
+        }
+        identity_session.create(identity_data)
 
 def ensure_test_user_exists():
     """
@@ -40,10 +47,13 @@ def ensure_test_user_exists():
     This function checks if a test user with the specified username exists. If not, it creates one.
     """
     try:
-        # Attempt to get the user
-        with users_repository.create_session() as session:
-            user = session.get_first({'username': username})
-            if user is None:
+        # Attempt to get the user identity
+        with user_identities_repository.create_session() as identity_session:
+            user_identity = identity_session.get_first({
+                'provider': 'local',
+                'provider_user_id': username
+            })
+            if user_identity is None:
                 create_test_user()
     except Exception as e:
         print(f"Error ensuring test user exists: {e}")

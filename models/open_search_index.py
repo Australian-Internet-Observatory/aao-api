@@ -1,8 +1,7 @@
 from pydantic import BaseModel
 from sqlalchemy import BigInteger, String
-from sqlalchemy.orm import declarative_base, Mapped, mapped_column
-
-Base = declarative_base()
+from sqlalchemy.orm import Mapped, mapped_column
+from .base import Base
 
 class OpenSearchIndexORM(Base):
     __tablename__ = 'open_search_indices'
