@@ -37,7 +37,7 @@ def list_observers(event):
                             comment:
                                 type: string
     """
-    dirs = observations_sub_bucket.list_dir()
+    dirs = observations_sub_bucket.list_dir(list_all=True)
     return [path for path in dirs if path.endswith("/")]
 
 @route('observers/{observer_id}/csr', 'GET')

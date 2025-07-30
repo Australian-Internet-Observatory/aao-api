@@ -14,26 +14,61 @@ MOBILE_OBSERVATIONS_BUCKET = 'fta-mobile-observations-v2'
 
 client = session_sydney.client('s3')
 
-def list_dir(path=""):
+# Maximum number of pagination iterations to prevent infinite loops
+MAX_LIST_DIR_ITERS = 1000
+
+def list_dir(path="", list_all=False):
     # If the path does not have an extension, it is a directory
     if not os.path.splitext(path)[1] and not path.endswith('/'):
         path += '/'
-    # for obj in observation_bucket.objects.filter(Prefix=path, Delimiter='/'):
-    #     print(obj.key)
     kwargs = {
         'Bucket': MOBILE_OBSERVATIONS_BUCKET, 
         'Delimiter': '/'
     }
+    
     if path and path not in ["/", "", ".", "./"]:
         kwargs['Prefix'] = path
-    client_response = client.list_objects_v2(**kwargs)
+    
     dir_elements = []
-    for content in client_response.get('CommonPrefixes', []):
-        dir_name = content.get('Prefix')
-        dir_elements.append(dir_name)
-    for content in client_response.get('Contents', []):
-        file_name = content.get('Key')
-        dir_elements.append(file_name)
+    
+    def process_response(response):
+        # Process directories
+        for content in response.get('CommonPrefixes', []):
+            dir_name = content.get('Prefix')
+            dir_elements.append(dir_name)
+        
+        # Process files
+        for content in response.get('Contents', []):
+            file_name = content.get('Key')
+            dir_elements.append(file_name)
+    
+    # Single request, up to 1000 objects
+    if not list_all:
+        client_response = client.list_objects_v2(**kwargs)
+        process_response(client_response)
+        return dir_elements
+    
+    # Otherwise, use pagination to get all objects when list_all=True
+    continuation_token = None
+    iteration_count = 0
+    while iteration_count < MAX_LIST_DIR_ITERS:
+        list_kwargs = dict(MaxKeys=1000, **kwargs)
+        if continuation_token:
+            list_kwargs['ContinuationToken'] = continuation_token
+        
+        client_response = client.list_objects_v2(**list_kwargs)
+        process_response(client_response)
+        
+        # Check if there are more results to fetch
+        if not client_response.get('IsTruncated'):
+            break
+        continuation_token = client_response.get('NextContinuationToken')
+        iteration_count += 1
+    
+    # Log a warning if we hit the maximum iterations
+    if iteration_count >= MAX_LIST_DIR_ITERS:
+        print(f"Warning: Hit maximum iterations ({MAX_LIST_DIR_ITERS}) while listing S3 objects. Results may be incomplete.")
+    
     return dir_elements
 
 def read_json_file(path):
