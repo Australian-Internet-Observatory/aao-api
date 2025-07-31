@@ -16,7 +16,7 @@ session = boto3.Session(
 
 s3 = session.client('s3')
 
-BUCKET = 'fta-mobile-observations-holding-bucket'
+BUCKET = config.buckets.metadata
 PREFIX = 'metadata'
 
 def put_object(key, data):

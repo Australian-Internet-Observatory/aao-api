@@ -24,7 +24,7 @@ session = boto3.Session(
     region_name='ap-southeast-2'
 )
 
-ADS_BUCKET = 'fta-mobile-observations-v2'
+ADS_BUCKET = config.buckets.observations
 AD_ATTRIBUTES_PREFIX = 'ad-custom-attributes'
 
 @route('ads/{observer_id}/{timestamp}.{ad_id}/attributes', 'GET')

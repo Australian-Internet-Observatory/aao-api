@@ -10,7 +10,7 @@ session_sydney = boto3.Session(
     aws_secret_access_key=config.aws.secret_access_key
 )
 
-MOBILE_OBSERVATIONS_BUCKET = 'fta-mobile-observations-v2'
+MOBILE_OBSERVATIONS_BUCKET = config.buckets.observations
 
 client = session_sydney.client('s3')
 

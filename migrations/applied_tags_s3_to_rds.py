@@ -2,6 +2,7 @@
 # which are the applied tags to observations).
 
 from tqdm import tqdm
+from config import config
 from db.clients.rds_storage_client import RdsStorageClient
 from db.clients.s3_storage_client import S3StorageClient
 from db.repository import Repository
@@ -12,7 +13,7 @@ s3_ads_tags_repository = Repository(
     model=LegacyAdTag,
     keys=['id'],
     client=S3StorageClient(
-        bucket='fta-mobile-observations-holding-bucket',
+        bucket=config.buckets.metadata,
         prefix='metadata/ads_tags',
         extension='json',
         keys=['id']

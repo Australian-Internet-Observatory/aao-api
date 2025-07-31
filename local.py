@@ -22,7 +22,7 @@ def get_dynamo_credentials() -> list[User]:
     return response['Items']
 
 def migrate_credentials_from_dynamo_to_s3():
-    TARGET_BUCKET = 'fta-mobile-observations-holding-bucket'
+    TARGET_BUCKET = config.buckets.metadata
     USERS_FOLDER_PREFIX = 'metadata/dashboard-users'
     user_data = get_dynamo_credentials()
     s3 = session.client('s3', region_name='ap-southeast-2')
@@ -38,7 +38,7 @@ def migrate_credentials_from_dynamo_to_s3():
     return True
 
 def delete_s3_credentials():
-    TARGET_BUCKET = 'fta-mobile-observations-holding-bucket'
+    TARGET_BUCKET = config.buckets.metadata
     USERS_FOLDER_PREFIX = 'metadata/dashboard-users/'
     s3 = session.client('s3', region_name='ap-southeast-2')
     user_data = get_dynamo_credentials()

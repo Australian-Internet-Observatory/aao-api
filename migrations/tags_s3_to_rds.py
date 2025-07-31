@@ -2,6 +2,7 @@
 # which are the applied tags to observations).
 
 from tqdm import tqdm
+from config import config
 from db.clients.s3_storage_client import S3StorageClient
 from db.repository import Repository
 from models.tag import Tag
@@ -10,7 +11,7 @@ from db.shared_repositories import tags_repository as rds_tags_repository
 s3_tags_repository = Repository(
     model=Tag,
     client=S3StorageClient(
-        bucket='fta-mobile-observations-holding-bucket',
+        bucket=config.buckets.metadata,
         prefix='metadata/tags',
         extension='json'
     )

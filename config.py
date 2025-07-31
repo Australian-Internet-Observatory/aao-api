@@ -44,6 +44,11 @@ class AppConfig:
     frontend_url: str
     
 @dataclass
+class BucketsConfig:
+    observations: str
+    metadata: str
+    
+@dataclass
 class TestConfig:
     username: str
     password: str
@@ -57,6 +62,7 @@ class Config:
     postgres: PostgresConfig
     cilogon: CilogonConfig
     app: AppConfig
+    buckets: BucketsConfig
     test: TestConfig
     
 def _load_from_file(target = 'config.ini') -> Config:
@@ -99,6 +105,10 @@ def _load_from_file(target = 'config.ini') -> Config:
             state_cookie_secret=_config['APP']['STATE_COOKIE_SECRET'],
             salt=_config['APP']['SALT'],
             frontend_url=_config['APP']['FRONTEND_URL']
+        ),
+        buckets=BucketsConfig(
+            observations=_config['BUCKETS']['OBSERVATIONS'],
+            metadata=_config['BUCKETS']['METADATA']
         ),
         test=TestConfig(
             username=_config['TEST']['USERNAME'],
