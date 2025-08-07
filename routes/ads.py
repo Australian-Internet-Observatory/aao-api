@@ -7,13 +7,16 @@ import dateutil.tz
 from tqdm import tqdm
 
 from db.clients.rds_storage_client import RdsStorageClient
+from db.shared_repositories import observations_repository
 from enricher import RdoBuilder
 from middlewares.authenticate import authenticate
 from models.ad_tag import AdTag, AdTagORM
 from models.attribute import AdAttributeORM
+from models.observation import Observation, ObservationORM
 from routes import route
 from routes.ad_attributes import ad_attributes_repository
 from utils import Response, use
+from utils.indexer.indexer import Indexer
 from utils.opensearch import AdQuery
 from utils.opensearch.rdo_open_search import LATEST_READY_INDEX, AdWithRDO, RdoOpenSearch
 import utils.observations_sub_bucket as observations_sub_bucket
@@ -416,7 +419,7 @@ def get_observer_seen_ads_last_7_days(event, response: Response):
                                 type: string
                                 example: 'OBSERVER_NOT_PROVIDED_IN_PATH'
         404:
-            description: No cache found for observer
+            description: No observations found for observer
             content:
                 application/json:
                     schema:
@@ -427,7 +430,7 @@ def get_observer_seen_ads_last_7_days(event, response: Response):
                                 example: False
                             comment:
                                 type: string
-                                example: 'NO_CACHE_FOUND_FOR_OBSERVER'
+                                example: 'NO_OBSERVATIONS_FOUND_FOR_OBSERVER'
     """
     observer_id = event['pathParameters'].get('observer_id', None)
 
@@ -437,39 +440,38 @@ def get_observer_seen_ads_last_7_days(event, response: Response):
             'comment': 'OBSERVER_ID_NOT_PROVIDED_IN_PATH'
         })
 
-    cache_file_path = f'{observer_id}/quick_access_cache.json'
-    observer_data = observations_sub_bucket.read_json_file(cache_file_path)
-
-    if observer_data is None:
-        return response.status(404).json({
-            'success': False,
-            'comment': f'NO_CACHE_FOUND_FOR_OBSERVER: {observer_id}'
-        })
-
-    ads_from_cache = observer_data.get('ads_passed_rdo_construction', [])
-    recent_ads = []
+    # Calculate seven days ago timestamp in milliseconds
     now_utc = datetime.datetime.now(tz=dateutil.tz.tzutc())
     seven_days_ago_utc = now_utc - datetime.timedelta(days=7)
+    seven_days_ago_timestamp_ms = int(seven_days_ago_utc.timestamp() * 1000)
 
-    for ad_path_str in ads_from_cache:
-        try:
-            parsed_ad_info = parse_ad_path(ad_path_str)
-            timestamp_str = parsed_ad_info['timestamp']
-
-            ad_timestamp_ms = int(float(timestamp_str))
-            ad_datetime_utc = datetime.datetime.fromtimestamp(ad_timestamp_ms / 1000.0, tz=dateutil.tz.tzutc())
-            
-            if ad_datetime_utc >= seven_days_ago_utc:
-                recent_ads.append(ad_path_str)
-        except ValueError as ve:
-            print(f"Warning: Skipping ad path '{ad_path_str}' for observer '{observer_id}'. Invalid format or timestamp: {ve}")
-        except Exception as e:
-            print(f"Warning: Error processing ad path '{ad_path_str}' for observer '{observer_id}': {e}")
-    
-    return {
-        'success': True,
-        'ads': recent_ads
-    }
+    try:
+        recent_ads = AdQuery().query_all({
+            'method': 'AND',
+            'args': [
+                {
+                    'method': 'OBSERVER_ID_EQUALS',
+                    'args': [observer_id]
+                },
+                {
+                    'method': 'DATETIME_AFTER',
+                    'args': [str(seven_days_ago_timestamp_ms)]
+                }
+            ]
+        })
+        
+        return {
+            'success': True,
+            'ads': recent_ads
+        }
+        
+    except Exception as e:
+        print(f"Error querying observations for observer {observer_id}: {str(e)}")
+        return response.status(500).json({
+            'success': False,
+            'comment': 'FAILED_TO_QUERY_OBSERVATIONS',
+            'error': str(e)
+        })
 
 
 @route('ads/batch', 'POST')
@@ -883,14 +885,14 @@ def get_frames_presigned(event, response):
         'presigned_urls': presigned_urls
     }
     
-def try_compute_ads_stream_index(prefer_cache=True):
-    """Compute the ads stream index from the quick_access_cache.json file across
-    all observers and save it to the ads_stream.json file in the root of the bucket.
+INDEX_FILENAME = 'ads_stream.json'
+
+def try_compute_ads_list(prefer_cache=True):
+    """List all ads from RDS and save it to the ads_stream.json file in the root of the bucket.
     
     Does not run if the ads_stream.json file already exists and not older than 1 hour.
     """
     # Check if the ads_stream.json file exists and is not older than given cache age
-    INDEX_FILENAME = 'ads_stream.json'
     index_obj = observations_sub_bucket.try_get_object(key=INDEX_FILENAME)
     if index_obj is not None:
         # Terminate if the file is not older than given cache age
@@ -898,82 +900,27 @@ def try_compute_ads_stream_index(prefer_cache=True):
         now = datetime.datetime.now(tz=dateutil.tz.tzutc())
         cache_age = now - last_modified
         print(f'Found cache file. Cache age: {cache_age}')
-        if cache_age < datetime.timedelta(hours=1) and prefer_cache:
+        if cache_age < datetime.timedelta(hours=0) and prefer_cache:
+            print('Using cached ads stream index.')
             return observations_sub_bucket.read_json_file(INDEX_FILENAME)
 
-    # List all observers
-    print('Cache expired or not found. Computing ads stream index...')
-    observers = observations_sub_bucket.list_dir()
+    print('Cache file not found or too old, recomputing ads stream index...')
     
-    # Prepare list of files to fetch
-    observer_files_to_process = []
-    for observer_id in observers:
-        if observer_id.endswith('/'):
-            observer_id = observer_id[:-1]
-        observer_files_to_process.append(f'{observer_id}/quick_access_cache.json')
-
-    print(f'Fetching {len(observer_files_to_process)} observer files in parallel...')
-
-    # Fetch all observer data in parallel
-    MAX_WORKERS = 10
-    all_observer_data = {}
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        future_to_file = {
-            executor.submit(observations_sub_bucket.read_json_file, filepath): filepath
-            for filepath in observer_files_to_process
-        }
-        for future in concurrent.futures.as_completed(future_to_file):
-            filepath = future_to_file[future]
-            try:
-                data = future.result()
-                if data:
-                    all_observer_data[filepath] = data
-            except Exception as exc:
-                print(f'{filepath} generated an exception: {exc}')
-
-    ads_stream_index = {}
-    # Process the collected data
-    for observer_filepath, observer_data in all_observer_data.items():
-        if observer_data is None:
-            continue
-        keys = observer_data.keys()
-        for key in keys:
-            # Exclude 'observations' - too much unnecessary data
-            if key == 'observations':
-                continue
-            if key not in ads_stream_index:
-                ads_stream_index[key] = []
-            ads_stream_index[key].extend(observer_data[key])
+    # Query all ads from RDS
+    with observations_repository.create_session() as session:
+        observations: Observation = session.list()
+        index = [f"{obs.observer_id}/temp/{obs.timestamp}.{obs.observation_id}" for obs in observations]
     
-    keys = ads_stream_index.keys()
-    
-    # value structure: fda7681c-d7f1-4420-8499-46b4695d224a/temp/1729261457039.c979d19c-0546-412b-a2d9-63a247d7c250/
-    # observer: fda7681c-d7f1-4420-8499-46b4695d224a
-    # timestamp: 1729261457039
-    # ad_id: c979d19c-0546-412b-a2d9-63a247d7c250
-    # Sort the ads stream index by timestamp
-    def sort_by_timestamp(value):
-        if value.endswith('/'):
-            value = value[:-1]
-        observer, _, ad_path = value.split('/')
-        try:
-            timestamp, ad_id = ad_path.split('.')
-            return int(timestamp)
-        except Exception as e:
-            return 0
-    
-    for key in keys:
-        ads_stream_index[key] = sorted(ads_stream_index[key], key=sort_by_timestamp)
-    
-    print("Writing ads stream index to files...")
-    # Save the ads stream index to the ads_stream.json file
     observations_sub_bucket.client.put_object(
         Bucket=observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
         Key=INDEX_FILENAME,
-        Body=json.dumps(ads_stream_index).encode('utf-8')
+        Body=json.dumps(index).encode('utf-8')
     )
-    return ads_stream_index
+    
+    print(f"Saved {len(index)} ads to {INDEX_FILENAME}")
+    
+    return index
+        
 
 @route('ads', 'GET')
 @use(authenticate)
@@ -1017,8 +964,7 @@ def get_ads_stream_index(event, response):
                                 type: string
     """
     try:
-        try_compute_ads_stream_index()
-        INDEX_FILENAME = 'ads_stream.json'
+        try_compute_ads_list()
         index = observations_sub_bucket.read_json_file(INDEX_FILENAME)
         if index is None:
             return response.status(500).json({
@@ -1026,27 +972,13 @@ def get_ads_stream_index(event, response):
                 'comment': 'FAILED_TO_GET_ADS_STREAM_INDEX',
                 'error': 'ads_stream.json not found'
             })
-        ads_passed_rdo_construction = list(set(index.get('ads_passed_rdo_construction', [])))
-        # presigned_url = observations_sub_bucket.client.generate_presigned_url(
-        #     ClientMethod='get_object',
-        #     Params={
-        #         'Bucket': observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
-        #         'Key': INDEX_FILENAME
-        #     }
-        # )
-        # Save the ads with rdo construction to a file
-        observations_sub_bucket.client.put_object(
-            Bucket=observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
-            Key='ads_passed_rdo_construction.json',
-            Body=json.dumps(ads_passed_rdo_construction).encode('utf-8')
-        )
-        
+            
         # Generate a presigned URL for the ads_passed_rdo_construction.json file
         presigned_url = observations_sub_bucket.client.generate_presigned_url(
             ClientMethod='get_object',
             Params={
                 'Bucket': observations_sub_bucket.MOBILE_OBSERVATIONS_BUCKET,
-                'Key': 'ads_passed_rdo_construction.json'
+                'Key': INDEX_FILENAME
             },
         )
         
@@ -1055,9 +987,10 @@ def get_ads_stream_index(event, response):
             'presigned_url': presigned_url
         }
     except Exception as e:
+        raise e
         return response.status(500).json({
             'success': False,
-            'comment': f'FAILED_TO_COMPUTE_ADS_STREAM_INDEX',
+            'comment': f'FAILED_TO_QUERY_OBSERVATIONS',
             'error': str(e)
         })
         
@@ -1417,9 +1350,8 @@ def request_index(event, response):
     """
     observer_id, timestamp, ad_id = event['ad_params']
     try:
-        ad_with_rdo = AdWithRDO(observer_id, timestamp, ad_id)
-        open_search = RdoOpenSearch(index=LATEST_READY_INDEX)
-        open_search.put(ad_with_rdo, reduce=True)
+        indexer = Indexer(stage='staging', skip_on_error=False, index_name=LATEST_READY_INDEX)
+        indexer.put(observer_id=observer_id, timestamp=timestamp, ad_id=ad_id)
         return {
             'success': True
         }

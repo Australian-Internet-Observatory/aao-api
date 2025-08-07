@@ -53,6 +53,28 @@ def observer_id_contains(arg):
         }
     }
 
+@register("OBSERVER_ID_EQUALS")
+def observer_id_equals(arg):
+    # If no args, return empty query
+    if not arg["args"]:
+        return {
+            "match_none": {}
+        }
+    should_query = [
+        {
+            "match": {
+                "observer.uuid": observer_id
+            }
+        }
+        for observer_id in arg["args"]
+    ]
+    return {
+        "bool": {
+            "should": should_query,
+            "minimum_should_match": 1
+        }
+    }
+
 @register("OBSERVATION_ID_CONTAINS")
 def observation_id_contains(arg):
     should_query = [{"wildcard": {
@@ -138,4 +160,13 @@ def full_text_contains(arg):
             "should": should_query,
             "minimum_should_match": 1
         }
+    }
+    
+@register("ALL")
+def get_all(arg):
+    """
+    Return a query that matches all documents.
+    """
+    return {
+        "match_all": {}
     }
