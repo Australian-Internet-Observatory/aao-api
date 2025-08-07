@@ -74,6 +74,19 @@ class RdsStorageClient(BaseStorageClient):
         except Exception as e:
             raise e
 
+    def build_query(self, builder, **kwargs):
+        """Query the RDS table with a custom query."""
+        if not self.connected:
+            raise ConnectionError("Not connected to the RDS database.")
+        try:
+            with self.session_maker() as session:
+                query = session.query(self.base_orm)
+                if builder:
+                    query = builder(query, **kwargs)
+                return [obj.__dict__ for obj in query.all()]
+        except Exception as e:
+            raise e
+
     def put(self, value: dict):
         """Store an object in the RDS table."""
         if not self.connected:

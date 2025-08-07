@@ -2,6 +2,7 @@ from db.clients.rds_storage_client import RdsStorageClient
 from db.repository import Repository
 from models.ad_tag import AdTag, AdTagORM
 from models.attribute import AdAttribute, AdAttributeORM
+from models.observation import Observation, ObservationORM
 from models.tag import Tag, TagORM
 from models.user import User, UserORM, UserIdentity, UserIdentityORM
 
@@ -18,6 +19,15 @@ user_identities_repository = Repository(
     auto_generate_key=False,
     client=RdsStorageClient(
         base_orm=UserIdentityORM
+    )
+)
+
+observations_repository = Repository(
+    model=Observation,
+    keys=['observation_id'],
+    auto_generate_key=False,
+    client=RdsStorageClient(
+        base_orm=ObservationORM
     )
 )
 

@@ -1,18 +1,9 @@
 """Indexer module for handling ad indexing for querying."""
 
 from typing_extensions import Literal
-from db.clients.rds_storage_client import RdsStorageClient
-from db.repository import Repository
-from models.observation import Observation, ObservationORM
+from db.shared_repositories import observations_repository
+from models.observation import Observation
 from utils.opensearch.rdo_open_search import AdWithRDO, RdoOpenSearch
-
-observations_repository = Repository(
-    model=Observation,
-    keys=['observation_id'],
-    client=RdsStorageClient(
-        base_orm=ObservationORM,
-    )
-)
 
 class Indexer:
     def __init__(self, 
@@ -55,3 +46,41 @@ class Indexer:
             print(f"Error indexing ad {ad_id}: {str(e)}")
             if not self.skip_on_error:
                 raise e
+            
+    def delete_index_rds(self, observer_id: str, timestamp: str, ad_id: str):
+        """Delete an observation from the RDS table."""
+        try:
+            with observations_repository.create_session() as session:
+                session.delete(observer_id=observer_id, observation_id=ad_id)
+        except Exception as e:
+            print(f"Error deleting ad {ad_id} from RDS: {str(e)}")
+            if not self.skip_on_error:
+                raise e
+            
+    def delete_index_open_search(self, observer_id: str, timestamp: str, ad_id: str):
+        """Delete an ad from OpenSearch index."""
+        if not self.index_name:
+            raise ValueError("No index name provided. Please set index_name before deleting.")
+        index_name = self.index_name
+        
+        try:
+            open_search = RdoOpenSearch(index=index_name)
+            open_search.delete(ad_with_rdo=AdWithRDO(
+                observer_id=observer_id,
+                timestamp=timestamp,
+                ad_id=ad_id
+            ))
+        except Exception as e:
+            print(f"Error deleting ad {ad_id} from OpenSearch: {str(e)}")
+            if not self.skip_on_error:
+                raise e
+    
+    def delete(self, observer_id: str, timestamp: str, ad_id: str):
+        """Delete an ad from both RDS and OpenSearch."""
+        self.delete_index_rds(observer_id, timestamp, ad_id)
+        self.delete_index_open_search(observer_id, timestamp, ad_id)
+    
+    def put(self, observer_id: str, timestamp: str, ad_id: str):
+        """Put an ad into both RDS and OpenSearch."""
+        self.put_index_rds(observer_id, timestamp, ad_id)
+        self.put_index_open_search(observer_id, timestamp, ad_id)

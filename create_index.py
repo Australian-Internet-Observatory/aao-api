@@ -1,4 +1,7 @@
-from routes.ads import parse_ad_path, try_compute_ads_stream_index
+from db.clients.rds_storage_client import RdsStorageClient
+from db.shared_repositories import observations_repository
+from models.observation import ObservationORM
+from routes.ads import parse_ad_path, try_compute_ads_list
 from utils import observations_sub_bucket
 from utils.indexer.registry import IndexRegistry
 from utils.indexer.indexer import Indexer
@@ -57,7 +60,7 @@ def list_ads_to_index():
     
     # Recompute the ads stream index to ensure we have the latest ads
     logger.log("Recomputing the ads stream index to ensure we have the latest ads")
-    try_compute_ads_stream_index(prefer_cache=False)
+    try_compute_ads_list(prefer_cache=False)
     logger.log("Ads stream index recomputed successfully")
     
     # 1. Read the ads from the ads_stream.json
@@ -77,7 +80,7 @@ def put_index_star(args):
     """Wrapper function to unpack arguments for multiprocessing."""
     return put_index(*args)
 
-def index_list(ads, max_workers=50, index_name=None):
+def index_list_open_search(ads, max_workers=50, index_name=None):
     """Index a list of ads."""
     # If 1 worker, do it sequentially
     if max_workers == 1:
@@ -100,6 +103,32 @@ def index_list(ads, max_workers=50, index_name=None):
             ):
             pass
 
+def index_list_rds(ads):
+    """Index a list of ads into RDS."""
+    rds_client: RdsStorageClient = observations_repository._client
+    rds_client.connect()
+    
+    # Clear the observations table to ensure a clean state
+    with rds_client.session_maker() as session:
+        session.query(ObservationORM).delete()
+        session.commit()
+    
+    # Insert ads into RDS
+    ads_orm = [
+        ObservationORM(
+            observation_id=ad["ad_id"],
+            observer_id=ad["observer_id"],
+            timestamp=int(ad["timestamp"])
+        ) for ad in ads
+    ]
+    
+    with rds_client.session_maker() as session:
+        session.add_all(ads_orm)
+        session.commit()
+    
+    print(f"Indexed {len(ads)} ads into RDS")
+    rds_client.disconnect()
+
 def index_all_ads(index_name):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     logger = Logger(f"ads_indexing_{timestamp}.log", verbose=True)
@@ -111,26 +140,11 @@ def index_all_ads(index_name):
     logger.log(f"Found {len(ads_to_index)} ads to index")
     
     # Put the ads in the index
-    index_list(ads_to_index, index_name=index_name)
+    index_list_open_search(ads_to_index, index_name=index_name)
+    index_list_rds(ads_to_index)
         
     logger.log("Indexing process completed at " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     logger.close()
-
-def index_failed_ads(log_file_path):
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    logger = Logger(f"ads_indexing_failed_{timestamp}.log", verbose=True)
-    logger.log("Starting the indexing of failed ads")
-    # Get the list of failed ads from the log file
-    failed_ads = list_failed_ads(log_file_path)
-    assert len(failed_ads) > 0, "No failed ads to index"
-    logger.log(f"Found {len(failed_ads)} failed ads to index")
-    
-    # Put the failed ads in the index
-    index_list(failed_ads)
-    
-    logger.log("Indexing of failed ads completed")
-    logger.close()
-
 
 if __name__ == "__main__":
     registry = IndexRegistry()

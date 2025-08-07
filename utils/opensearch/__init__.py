@@ -106,15 +106,14 @@ class AdQuery:
         print(f"Paginated query returned {len(ad_ids)} hits.")
         print(f"Last sort key: {last_sort_key}")
         return ad_ids, last_sort_key, total_results
-    
-    def query_all(self, query_dict: dict):
+
+    def query_all(self, query_dict: dict, page_size: int = 1000):
         # Limit the page size to avoid exceeding OpenSearch timeout
-        PAGE_SIZE = 1000
         MAX_RESULTS = 1_000_000
         
-        query = create_query(query_dict, page_size=PAGE_SIZE)
+        query = create_query(query_dict, page_size=page_size)
         ad_ids, last_sort_key, total_results = execute_open_search_query(query)
-        max_retries = (min(MAX_RESULTS, total_results) // PAGE_SIZE)
+        max_retries = (min(MAX_RESULTS, total_results) // page_size)
         print(f"Initial hits: {len(ad_ids)}, last sort key: {last_sort_key}")
 
         for i in range(max_retries):

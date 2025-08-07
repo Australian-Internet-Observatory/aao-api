@@ -48,3 +48,23 @@ def test_get_ads():
     # Check if the content is a list
     ads = response.json()
     assert isinstance(ads, list), f"Expected list, got {type(ads)}" 
+    print(f"Number of ads: {len(ads)}")
+    
+def test_get_recent_ads_by_observer():
+    token = get_login_token()
+    headers = {
+        'Authorization': f'Bearer {token}'
+    }
+    observer_id = "f7d8de6e-77e9-419e-82a4-b7f833a981cc"
+    response = local_handler({
+        'path': f'/ads/{observer_id}/recent',
+        'httpMethod': 'GET',
+        'headers': headers,
+    }, None)
+    print(response)
+    assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
+    body: dict = json.loads(response['body'])
+    ads = body.get('ads', [])
+    # Check if ads is a list
+    assert isinstance(ads, list), f"Expected list, got {type(ads)}"
+    print(f"Number of recent ads for observer {observer_id}: {len(ads)}")
