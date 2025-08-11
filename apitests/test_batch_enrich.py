@@ -6,6 +6,7 @@ including presigned URL generation for batch ad metadata requests.
 """
 
 import pytest
+import requests
 from base import execute_endpoint
 from enrich_target import ads
 
@@ -156,3 +157,57 @@ def test_batch_enrich_presign_large_batch():
     assert response['statusCode'] == 200
     assert response['body']['success'] is True
     assert 'presigned_url' in response['body']
+    
+def test_batch_enrich_attributes_one_ad():
+    """
+    Test the batch enrich attributes endpoint with a single ad.
+    
+    This test verifies that the endpoint can handle a request with only one ad.
+    """
+    request_data = {
+        "ads": [
+            {
+                "ad_id": "13d7ab01-4e9a-4a3d-ac83-19a3705acecf",
+                "observer_id": "d332600f-cd8c-490e-bbb5-f353b563a6ee",
+                "timestamp": "1754435466166"
+            },
+        ],
+        "metadata_types": ['attributes'],
+    }
+    response = execute_endpoint(
+        'ads/batch/presign',
+        method='POST', 
+        body=request_data,
+        auth=True
+    )
+    
+    # Should succeed with single ad
+    assert response['statusCode'] == 200
+    assert response['body']['success'] is True
+    assert 'presigned_url' in response['body']
+    assert isinstance(response['body']['presigned_url'], str)
+    assert len(response['body']['presigned_url']) > 0
+    body = response['body']
+    # Fetch the presigned URL
+    response = requests.get(body['presigned_url'])
+    
+    content = response.json()
+    
+    # Check if the response is successful
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+    
+    # Check if the content is a list
+    assert isinstance(content, list), f"Expected list, got {type(content)}"
+    
+    # Check if the ad is in the content
+    assert len(content) == 1, f"Expected 1 ad, got {len(content)}"
+    ad = content[0]
+    
+    print(ad)
+    
+    # Ensure the ad has the attributes we expect
+    attributes = ad.get('metadata', {}).get('attributes')
+    assert isinstance(attributes, dict), f"Expected attributes to be a dict, got {type(attributes)}"
+    
+    # Ensure the starred attribute is present
+    assert 'starred' in attributes, f"Starred attribute not found in {attributes}"
