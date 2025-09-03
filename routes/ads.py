@@ -244,16 +244,26 @@ class BatchEnricher:
         rds_client: RdsStorageClient = ad_attributes_repository._client
         rds_client.connect()
         
-        observation_ids = [enricher.ad_id for enricher in self.enrichers]
+        def get_observation_id(enricher):
+            return f"{enricher.observer_id}_{enricher.timestamp}.{enricher.ad_id}"
+        
+        def get_ad_id(observation_id):
+            parts = observation_id.split('.')
+            if len(parts) < 2:
+                raise ValueError(f"Invalid observation_id format: {observation_id}")
+            return parts[-1]
+        
+        observation_ids = [get_observation_id(enricher) for enricher in self.enrichers]
         results = {}
         with rds_client.session_maker() as session:
             query = session.query(AdAttributeORM).filter(AdAttributeORM.observation_id.in_(observation_ids)).all()
-            print(f"[BatchEnricher] Found {len(query)} ads with attributes for {len(observation_ids)} observations.")
+            print(f"[BatchEnricher] Found {len(query)} ads with attributes for {len(observation_ids)} observations: {observation_ids[:5]}.")
             for result in query:
                 observation_id = result.observation_id
+                ad_id = get_ad_id(observation_id)
                 if observation_id not in results:
-                    results[observation_id] = {}
-                results[observation_id][result.key] = {
+                    results[ad_id] = {}
+                results[ad_id][result.key] = {
                     "value": result.value,
                     "created_at": result.created_at,
                     "created_by": result.created_by,
