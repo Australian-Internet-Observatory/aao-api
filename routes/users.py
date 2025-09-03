@@ -384,13 +384,16 @@ def edit_user(event, response):
     new_data = event['body']
     acceptable_fields = ['enabled', 'password', 'full_name', 'role']
     
-    # Ensure that the fields are acceptable
-    for key in new_data:
-        if key not in acceptable_fields:
-            return response.status(400).json({
-                "success": False,
-                "comment": f"Field '{key}' is not acceptable"
-            })
+    # # Ensure that the fields are acceptable
+    # for key in new_data:
+    #     if key not in acceptable_fields:
+    #         return response.status(400).json({
+    #             "success": False,
+    #             "comment": f"Field '{key}' is not acceptable"
+    #         })
+    
+    # Remove any fields that are not acceptable
+    new_data = {k: v for k, v in new_data.items() if k in acceptable_fields}
     
     # Ensure the role is only updated by an admin
     if 'role' in new_data and Role.parse(caller.role) != Role.ADMIN:
