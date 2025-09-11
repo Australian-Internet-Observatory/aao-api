@@ -221,6 +221,7 @@ def get_or_create_external_user_identity(provider: str, provider_user_id: str, f
                 'id': existing_identity.user_id,
                 'full_name': full_name,
                 'enabled': linked_user.enabled or False,
+                'role': linked_user.role or 'user',
                 'primary_email': email or linked_user.primary_email  
             })
             return existing_identity
