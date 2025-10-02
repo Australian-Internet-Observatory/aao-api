@@ -332,7 +332,10 @@ def cilogon_authorize(event, response: Response):
         # 2. Validate inputs
         if not returned_state or not code or not signed_state_from_cookie:
             response.status(400).json(
-                {"success": False, "comment": "Missing state, code, or cookie"}
+                {
+                    "success": False, 
+                    "comment": "Missing state, code, or cookie. Please try logging in again from the dashboard."
+                }
             )
             return event, response, {}
 
