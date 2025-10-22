@@ -2,6 +2,7 @@ import json
 # Needed for importing the lambda_function module
 import sys
 sys.path.append("../")
+from apitests.base import execute_endpoint
 from lambda_function import lambda_handler as local_handler
 from config import config
 import pytest
@@ -87,3 +88,14 @@ def test_get_ads_from_guest():
         }
     }, None)
     print(get_ads_res)
+    
+def test_get_hidden_ads():
+    response = execute_endpoint(endpoint='ads/hidden?page=1&page_size=1000&include=not_ignored', method='GET', auth=True)
+    print(response)
+    body = response.get('body', {})
+    hidden_ads = body.get('hidden_ads', [])
+    pagination = body.get('pagination', {})
+    assert isinstance(hidden_ads, list), f"Expected list, got {type(hidden_ads)}"
+    assert isinstance(pagination, dict), f"Expected dict, got {type(pagination)}"
+    print(f"Number of hidden ads: {len(hidden_ads)}")
+    print(f"Pagination info: {pagination}")

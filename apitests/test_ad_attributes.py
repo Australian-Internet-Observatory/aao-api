@@ -439,3 +439,41 @@ class TestAdAttributes:
         # Clean up
         for key, _ in attributes:
             delete_test_attribute(key=key)
+
+def test_hide_ad():
+    ad = {
+        "observer_id": "4ccd5b4b-19da-4a34-a627-c9a534a627cd",
+        "timestamp": "1748229356094",
+        "ad_id": "851e2cf8-5a82-48ad-805b-88f84754f462",
+    }
+    response = execute_endpoint(
+        f"ads/{ad['observer_id']}/{ad['timestamp']}.{ad['ad_id']}/attributes",
+        "PUT",
+        {
+            "attribute": {
+                "key": "hidden",
+                "value": "True"
+            }
+        },
+        auth=True
+    )
+    assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
+    
+def test_unhide_ad():
+    ad = {
+        "observer_id": "4ccd5b4b-19da-4a34-a627-c9a534a627cd",
+        "timestamp": "1748229356094",
+        "ad_id": "851e2cf8-5a82-48ad-805b-88f84754f462",
+    }
+    response = execute_endpoint(
+        f"ads/{ad['observer_id']}/{ad['timestamp']}.{ad['ad_id']}/attributes",
+        "PUT",
+        {
+            "attribute": {
+                "key": "hidden",
+                "value": "False"
+            }
+        },
+        auth=True
+    )
+    assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
