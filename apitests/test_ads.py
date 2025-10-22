@@ -68,3 +68,22 @@ def test_get_recent_ads_by_observer():
     # Check if ads is a list
     assert isinstance(ads, list), f"Expected list, got {type(ads)}"
     print(f"Number of recent ads for observer {observer_id}: {len(ads)}")
+    
+def test_get_ads_from_guest():
+    observer_id = "c1a56f0c-8775-4b5e-bc7e-8b9f41039cd5"
+    guest_key = "mobile-observer-c1a56f0c-8775-4b5e-bc7e-8b9f41039cd5"
+    get_guest_res = local_handler({
+        'path': f'/guests/{guest_key}',
+        'httpMethod': 'GET',
+    }, None)
+    token = json.loads(get_guest_res['body'])['token']
+    print(f"Guest token: {token}")
+    
+    get_ads_res = local_handler({
+        'path': f'/ads/{observer_id}',
+        'httpMethod': 'GET',
+        'headers': {
+            'Authorization': f'Bearer {token}'
+        }
+    }, None)
+    print(get_ads_res)

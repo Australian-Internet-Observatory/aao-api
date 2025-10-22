@@ -3,7 +3,7 @@ from utils import use
 import utils.metadata_sub_bucket as metadata
 from middlewares.authorise import authorise, Role
 from middlewares.authenticate import authenticate
-from utils.jwt import create_token
+from utils.jwt import JsonWebToken, create_token
 import time
 import json
 
@@ -79,23 +79,13 @@ def create_session(event, response, context):
         })
         return event, response, context
 
-    expiration_timestamp = int(time.time()) + expiration_time
-    session_data = {
-        "exp": expiration_timestamp,
-        "username": key,
-        "role": "guest",
-        "enabled": True,
-        "full_name": "Guest",
-        "description": description
-    }
-
     session_file_key = f"{SESSION_FOLDER_PREFIX}/{key}.json"
-    metadata.put_object(session_file_key, json.dumps(session_data))
+    jwt_instance = JsonWebToken.guest_token(key=key)
+    metadata.put_object(session_file_key, json.dumps(jwt_instance.payload))
 
-    token, payload = create_token(session_data)
     response.json({
         "success": True,
-        "token": token
+        "token": jwt_instance.token
     })
     return event, response, context
 
@@ -199,10 +189,10 @@ def get_session(event, response, context):
         })
         return event, response, context
 
-    token, payload = create_token(session_data)
+    jwt_instance = JsonWebToken.from_payload(session_data)
     response.json({
         "success": True,
-        "token": token
+        "token": jwt_instance.token
     })
     return event, response, context
 

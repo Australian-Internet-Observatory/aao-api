@@ -57,6 +57,13 @@ def authenticate(event, response, context):
     
     json_web_token = jwt.JsonWebToken.from_token(token)
     
+    # If the claim is a guest, skip the user existence check
+    if json_web_token.role == 'guest':
+        event['identity'] = json_web_token.identity
+        event['user'] = json_web_token.user
+        print(f"[Authentication] Guest user successfully verified: {event['user']} with identity {event['identity']}")
+        return event, response, context
+    
     # Ensure the user exists in the database
     if not is_user_exists(json_web_token.user.id):
         response.status(401).json({

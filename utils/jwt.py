@@ -83,15 +83,18 @@ class JsonWebToken:
         return current_time > self.exp
     
     @staticmethod
-    def guest_token() -> 'JsonWebToken':
+    def guest_token(key: str = None) -> 'JsonWebToken':
         """
         Create a JWT token for guest users.
         
         Returns:
             JsonWebToken: An instance of JsonWebToken for guest access.
         """
+        if not key:
+            key = str(uuid.uuid4())
+        
         return JsonWebToken(
-            sub=str(uuid.uuid4()),
+            sub=key,
             iat=int(time.time()),
             exp=int(time.time()) + config.jwt.expiration,
             role="guest",
@@ -125,6 +128,18 @@ class JsonWebToken:
         if signature != expected_signature:
             raise ValueError("Invalid token signature")
         
+        return JsonWebToken.from_payload(payload)
+    
+    @staticmethod
+    def from_payload(payload: dict) -> 'JsonWebToken':
+        """
+        Create a JsonWebToken instance from a payload dictionary.
+        
+        Args:
+            payload (dict): The JWT payload.
+        Returns:
+            JsonWebToken: An instance of JsonWebToken with the payload data.
+        """
         return JsonWebToken(
             sub=payload["sub"],
             iat=payload["iat"],
