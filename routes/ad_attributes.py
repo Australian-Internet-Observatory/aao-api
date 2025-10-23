@@ -112,10 +112,32 @@ def get_attributes(event, response):
             "comment": "ERROR_RETRIEVING_ATTRIBUTES"
         })
 
+def handle_update_hidden(observer_id, timestamp, ad_id, hidden):
+    import requests
+    action = None
+    if hidden.lower() == "true":
+        action = "DISABLE_AD"
+    elif hidden.lower() == "false":
+        action = "DISABLE_AD"
+    else:
+        raise ValueError("Invalid hidden value:", hidden)
+    
+    response = requests.post(
+        "https://bxxqvaozhe237ak5ndca2zftz40kvgfm.lambda-url.ap-southeast-2.on.aws/", 
+        json={
+        "action": action,
+        "observer_uuid": observer_id,
+        "rdo_uuid_unsplit" : f"{timestamp}.{ad_id}"
+        }
+    )
+    if response.status_code != 200:
+        raise Exception("Failed to update ad hidden status with error:", response.text)
+    
+
 @route('ads/{observer_id}/{timestamp}.{ad_id}/attributes', 'PUT')
 @use(authenticate)
 @use(authorise(Role.USER, Role.ADMIN))
-def add_properties(event, response):
+def add_attribute(event, response):
     """Add or update ad attributes in the database.
 
     Add or update custom attributes for the specified ad in the database.
@@ -185,18 +207,28 @@ def add_properties(event, response):
     user_id = event['user'].id
     
     try:
-        # Create or update attribute
-        new_attr = AdAttribute(
-            observation_id=observation_id,
-            key=key,
-            value=str(attribute['value']),
-            created_at=current_time,
-            created_by=user_id,
-            modified_at=current_time,
-            modified_by=user_id
-        )
+        current_attr = None
         with ad_attributes_repository.create_session() as repository_session:
+            # Get the current attribute if available
+            current_attr = repository_session.get_first({
+                "observation_id": observation_id,
+                "key": key
+            })
+            # Create or update attribute
+            new_attr = AdAttribute(
+                observation_id=observation_id,
+                key=key,
+                value=str(attribute['value']),
+                created_at=current_attr.created_at if current_attr else current_time,
+                created_by=current_attr.created_by if current_attr else user_id,
+                modified_at=current_time,
+                modified_by=user_id
+            )
             repository_session.create_or_update(new_attr)
+            
+        # Special handling for "hidden" attribute
+        if key == "hidden":
+            handle_update_hidden(observer_id, timestamp, ad_id, str(attribute['value']))
         
         return {
             "success": True,

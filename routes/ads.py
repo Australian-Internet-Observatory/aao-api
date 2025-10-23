@@ -1,15 +1,17 @@
-import concurrent.futures
 import datetime
 import hashlib
 import json
 
 import dateutil.tz
+from sqlalchemy import text
 from tqdm import tqdm
+from config import config
 
 from db.clients.rds_storage_client import RdsStorageClient
 from db.shared_repositories import observations_repository
 from enricher import RdoBuilder
 from middlewares.authenticate import authenticate
+from middlewares.authorise import Role, authorise
 from models.ad_tag import AdTag, AdTagORM
 from models.attribute import AdAttributeORM
 from models.observation import Observation, ObservationORM
@@ -930,7 +932,183 @@ def try_compute_ads_list(prefer_cache=True):
     print(f"Saved {len(index)} ads to {INDEX_FILENAME}")
     
     return index
+
+@route('ads/hidden', 'GET')
+@use(authenticate)
+@use(authorise(Role.ADMIN))
+def get_hidden_ads(event, response):
+    """Retrieve the list of hidden ads.
+
+    Retrieve the list of ads that are marked as hidden by users.
+    ---
+    tags:
+        - ads
+    parameters:
+        -   in: query
+            name: page
+            schema:
+                type: integer
+            required: false
+            description: The page number to retrieve (default is 1)
+        -   in: query
+            name: page_size
+            schema:
+                type: integer
+            required: false
+            description: The number of items per page (default is 1000)
+        -   in: query
+            name: include # one of 'ignored', 'not_ignored', 'all'
+            schema:
+                type: string
+            required: false
+            description: Filter hidden ads by ignored status (default is 'all')
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                            hidden_ads:
+                                type: array
+                                items:
+                                    type: object
+                                    properties:
+                                        observer_id:
+                                            type: string
+                                        timestamp:
+                                            type: number
+                                        observation_id:
+                                            type: string
+                                        hidden_at:
+                                            type: number
+                                        hidden_by:
+                                            type: object
+                                            properties:
+                                                user_id:
+                                                    type: string
+                                                fullname:
+                                                    type: string
+                                        ignored:
+                                            type: boolean
+                            pagination:
+                                type: object
+                                properties:
+                                    total_records:
+                                        type: integer
+                                    current_page:
+                                        type: integer
+                                    total_pages:
+                                        type: integer
+                                    limit:
+                                        type: integer
+        500:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'FAILED_TO_QUERY_HIDDEN_ADS'
+                            error:
+                                type: string
+    """
+    client = ad_attributes_repository._client
+    client.connect()
+    page_size = event.get("queryStringParameters", {}).get("page_size", 1000)
+    page = event.get("queryStringParameters", {}).get("page", 1)
+    offset = (int(page) - 1) * int(page_size)
+    include_filter = event.get("queryStringParameters", {}).get("include", "all")
+    if include_filter not in ['ignored', 'not_ignored', 'all']:
+        include_filter = 'all'
+    ignored_query = ''
+    if include_filter == 'ignored':
+        ignored_query = "where ignored = 'True'"
+    elif include_filter == 'not_ignored':
+        ignored_query = "where (ignored IS NULL OR ignored != 'True')"
+    
+    target_sql_query = f"""
+        (
+            select RIGHT(observation_id, 36) as observation_id, key, value, modified_at, modified_by
+            from public.ad_attributes
+            where key = 'hidden' and value = 'True'
+        )	as ad_attributes
+        left join
+        (
+            select RIGHT(observation_id, 36) as observation_id, value as ignored
+            from public.ad_attributes
+            where key = 'hidden_ignored'
+        )	as ignored_ads
+            on ad_attributes.observation_id = ignored_ads.observation_id
+        inner join public.observations
+            on public.observations.observation_id = ad_attributes.observation_id
+        inner join 
+        (	
+            select id as user_id, full_name 
+            from public.users
+        )	as users
+            on users.user_id = ad_attributes.modified_by
+        {ignored_query}
+    """
+    
+    try:
+        sql_query = f"""
+        select observer_id, timestamp, public.observations.observation_id, modified_at, modified_by, full_name, ignored from
+        {target_sql_query}
+        ORDER BY modified_at DESC
+        LIMIT {page_size} OFFSET {offset};
+        """
+        with client.session_maker() as session:
+            result = session.execute(text(sql_query))
+            hidden_ads = []
+            for row in result:
+                hidden_ads.append({
+                    'observer_id': row[0],
+                    'timestamp': row[1],
+                    'observation_id': row[2],
+                    'hidden_at': row[3],
+                    'hidden_by': {
+                        'user_id': row[4],
+                        'fullname': row[5]
+                    },
+                    'ignored': row[6] == 'True'
+                })
         
+        # Get pagination info
+        count_query = f"""select count(*) from {target_sql_query}"""
+        with client.session_maker() as session:
+            count_result = session.execute(text(count_query))
+            total_items = count_result.scalar()
+            total_pages = (total_items + int(page_size) - 1) // int(page_size)
+            pagination = {
+                'total_records': total_items,
+                'current_page': int(page),
+                'total_pages': total_pages,
+                'limit': int(page_size)
+            }
+        
+        return {
+            'success': True,
+            'hidden_ads': hidden_ads,
+            'pagination': pagination
+        }
+    except Exception as e:
+        return response.status(500).json({
+            'success': False,
+            'comment': 'FAILED_TO_QUERY_HIDDEN_ADS',
+            'error': str(e)
+        })
+    finally:
+        client.disconnect()
+
 
 @route('ads', 'GET')
 @use(authenticate)
@@ -1543,3 +1721,102 @@ def query(event, response):
             'success': False,
             'comment': f"Error executing query: {str(e)}"
         })
+
+@route('ads/{observer_id}/{timestamp}.{ad_id}', 'DELETE')
+@use(authenticate)
+@use(authorise(Role.ADMIN))
+@use(parse_ad_params)
+def delete_ad(event, response):
+    """Delete a specific ad.
+
+    Delete the specified ad and all associated metadata.
+    ---
+    tags:
+        - ads
+    responses:
+        200:
+            description: A successful response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: True
+                            comment:
+                                type: string
+                                example: 'Ad deleted successfully'
+        400:
+            description: A failed response
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'MISSING_PARAMETERS: observer_id, timestamp, ad_id'
+        500:
+            description: Internal server error
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            success:
+                                type: boolean
+                                example: False
+                            comment:
+                                type: string
+                                example: 'FAILED_TO_DELETE_AD'
+                            error:
+                                type: string
+    """
+    # Remove the ad from the indexer so that it cannot be queried anymore
+    # This will prevent the ad from appearing on the frontend
+    indexer = Indexer(skip_on_error=False, index_name=LATEST_READY_INDEX)
+    observer_id, timestamp, ad_id = event['ad_params']
+    try:
+        indexer.delete(observer_id=observer_id, timestamp=timestamp, ad_id=ad_id)
+    except Exception as e:
+        return response.status(500).json({
+            'success': False,
+            'comment': 'FAILED_TO_DELETE_AD',
+            'error': str(e)
+        })
+    
+    # TODO: Implement backend ad deletion logic
+    try:
+        import requests
+        delete_response = requests.post(
+            "https://bxxqvaozhe237ak5ndca2zftz40kvgfm.lambda-url.ap-southeast-2.on.aws/", 
+            json={
+                "action": "DELETE_AD",
+                "observer_uuid": "4ccd5b4b-19da-4a34-a627-c9a534a627cd",
+                "rdo_uuid_unsplit" : "1748229356094.851e2cf8-5a82-48ad-805b-88f84754f462",
+                "master_password": config.external_api.ad_delete_lambda_key
+            }
+        )
+        if delete_response.status_code != 200:
+            raise Exception(f"Deletion failed with status code {delete_response.status_code}: {delete_response.text}")
+    except Exception as e:
+        # We want this action to be atomic, so if the backend deletion fails, should also rollback the indexer deletion
+        try:
+            print(f"Rolling back ad deletion for {observer_id}/{timestamp}.{ad_id} due to error: {str(e)}")
+            indexer.put(observer_id=observer_id, timestamp=timestamp, ad_id=ad_id)
+        except Exception as ie:
+            print(f"Error rolling back ad deletion for {observer_id}/{timestamp}.{ad_id}: {str(ie)}")
+        return response.status(500).json({
+            'success': False,
+            'comment': 'FAILED_TO_DELETE_AD',
+            'error': str(e)
+        })
+        
+    return {
+        'success': True,
+        'comment': 'Ad deleted successfully'
+    }

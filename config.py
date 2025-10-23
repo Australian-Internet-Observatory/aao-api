@@ -42,6 +42,10 @@ class AppConfig:
     state_cookie_secret: str
     salt: str
     frontend_url: str
+
+@dataclass
+class ExternalApiConfig:
+    ad_delete_lambda_key: str
     
 @dataclass
 class BucketsConfig:
@@ -62,6 +66,7 @@ class Config:
     postgres: PostgresConfig
     cilogon: CilogonConfig
     app: AppConfig
+    external_api: ExternalApiConfig
     buckets: BucketsConfig
     test: TestConfig
     
@@ -105,6 +110,9 @@ def _load_from_file(target = 'config.ini') -> Config:
             state_cookie_secret=_config['APP']['STATE_COOKIE_SECRET'],
             salt=_config['APP']['SALT'],
             frontend_url=_config['APP']['FRONTEND_URL']
+        ),
+        external_api=ExternalApiConfig(
+            ad_delete_lambda_key=_config['EXTERNAL_API']['AD_DELETE_LAMBDA_KEY']
         ),
         buckets=BucketsConfig(
             observations=_config['BUCKETS']['OBSERVATIONS'],

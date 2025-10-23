@@ -51,7 +51,10 @@ class Indexer:
         """Delete an observation from the RDS table."""
         try:
             with observations_repository.create_session() as session:
-                session.delete(observer_id=observer_id, observation_id=ad_id)
+                session.delete({
+                    'observer_id': observer_id,
+                    'observation_id': ad_id
+                })
         except Exception as e:
             print(f"Error deleting ad {ad_id} from RDS: {str(e)}")
             if not self.skip_on_error:
@@ -65,11 +68,11 @@ class Indexer:
         
         try:
             open_search = RdoOpenSearch(index=index_name)
-            open_search.delete(ad_with_rdo=AdWithRDO(
+            open_search.delete(AdWithRDO(
                 observer_id=observer_id,
                 timestamp=timestamp,
                 ad_id=ad_id
-            ))
+            ).open_search_id)
         except Exception as e:
             print(f"Error deleting ad {ad_id} from OpenSearch: {str(e)}")
             if not self.skip_on_error:
