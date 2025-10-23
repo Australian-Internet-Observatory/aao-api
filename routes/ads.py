@@ -1789,15 +1789,14 @@ def delete_ad(event, response):
             'error': str(e)
         })
     
-    # TODO: Implement backend ad deletion logic
     try:
         import requests
         delete_response = requests.post(
             "https://bxxqvaozhe237ak5ndca2zftz40kvgfm.lambda-url.ap-southeast-2.on.aws/", 
             json={
                 "action": "DELETE_AD",
-                "observer_uuid": "4ccd5b4b-19da-4a34-a627-c9a534a627cd",
-                "rdo_uuid_unsplit" : "1748229356094.851e2cf8-5a82-48ad-805b-88f84754f462",
+                "observer_uuid": observer_id,
+                "rdo_uuid_unsplit" : f"{timestamp}.{ad_id}",
                 "master_password": config.external_api.ad_delete_lambda_key
             }
         )
