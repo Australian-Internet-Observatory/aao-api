@@ -114,6 +114,29 @@ def handle_s3_event(event, context):
             raise Exception(f'This lambda function does not support bucket {bucket}')
         
         # If the key has the following format:
+        # <observer_id>/clip_classifications/<observation_id>.json
+        # Then it is a clip classification file, process it
+        if '/clip_classifications/' in key and key.endswith('.json'):
+            print(f'Processing clip classification object {key}')
+            parts = key.split('/')
+            parts = [part for part in parts if part != '']  # Remove empty parts
+            if len(parts) != 3:
+                raise Exception(f'Invalid clip classification key format: {key}')
+            observer_id = parts[0]
+            observation_id = parts[2].replace('.json', '')
+            
+            # Import and process the clip classification
+            from utils.etl.clip_classification import process_single_ad
+            success = process_single_ad(observer_id, '', observation_id)
+            
+            return {
+                'success': success,
+                'observer_id': observer_id,
+                'observation_id': observation_id,
+                'message': 'Clip classification processed' if success else 'Failed to process clip classification'
+            }
+        
+        # If the key has the following format:
         # <observer_id>/rdo/<timestamp>.<observation_id>/output.json
         # Then it is an RDO so request it to be indexed via the API
         if key.endswith('/output.json'):
