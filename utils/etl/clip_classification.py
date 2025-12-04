@@ -9,7 +9,8 @@ and stores the composite classification data in the ad_classifications RDS table
 
 import json
 import time
-from typing import List, Optional
+from multiprocessing import Pool, cpu_count
+from typing import List, Optional, Tuple
 from uuid import uuid4
 from tqdm import tqdm
 
@@ -18,6 +19,9 @@ from db.clients.rds_storage_client import RdsStorageClient
 from models.clip_classification import ClipClassification, ClipClassificationORM, CompositeClassification
 from models.observation import ObservationORM
 import utils.observations_sub_bucket as observations_sub_bucket
+
+# Default number of worker processes
+DEFAULT_WORKERS = min(8, cpu_count())
 
 
 def get_rds_client() -> RdsStorageClient:
@@ -117,6 +121,52 @@ def delete_existing_classifications(observation_id: str, rds_client: RdsStorageC
         ).delete()
         session.commit()
         return deleted
+
+
+def _process_observation_worker(args: Tuple[str, str]) -> Tuple[bool, int]:
+    """Worker function for multiprocessing to process a single observation.
+    
+    This function is designed to be called by a multiprocessing Pool.
+    Each worker creates its own database connection.
+    
+    Args:
+        args: Tuple of (observer_id, observation_id)
+        
+    Returns:
+        Tuple of (success: bool, classifications_count: int)
+    """
+    observer_id, observation_id = args
+    
+    try:
+        # Each worker gets its own RDS client
+        rds_client = get_rds_client()
+        
+        try:
+            # Read classification data from S3
+            data = read_clip_classification_from_s3(observer_id, observation_id)
+            if not data:
+                return (False, 0)
+            
+            # Parse the composite classifications
+            classifications = parse_composite_classifications(data)
+            if not classifications:
+                return (False, 0)
+            
+            # Delete existing classifications for this observation (for idempotency)
+            delete_existing_classifications(observation_id, rds_client)
+            
+            # Store the new classifications
+            current_time = int(time.time() * 1000)
+            count = store_classifications(observation_id, classifications, rds_client, current_time)
+            
+            return (True, count)
+            
+        finally:
+            rds_client.disconnect()
+            
+    except Exception as e:
+        # Silently handle errors in workers, they'll be counted as failures
+        return (False, 0)
 
 
 def process_single_ad(observer_id: str, timestamp: str, observation_id: str) -> bool:
@@ -227,13 +277,15 @@ def list_all_observers() -> List[str]:
     return list(observer_ids)
 
 
-def process_all_ads(clear_existing: bool = False) -> dict:
-    """Process clip classifications for all observations.
+def process_all_ads(clear_existing: bool = False, num_workers: int = DEFAULT_WORKERS) -> dict:
+    """Process clip classifications for all observations using multiprocessing.
     
     This should be run to import all existing clip classifications into RDS.
+    Uses a process pool to parallelize processing of observations.
     
     Args:
         clear_existing: If True, clear all existing classifications before processing
+        num_workers: Number of worker processes to use (default: min(8, cpu_count))
         
     Returns:
         Dictionary with processing statistics
@@ -245,74 +297,127 @@ def process_all_ads(clear_existing: bool = False) -> dict:
         'errors': 0
     }
     
-    rds_client = get_rds_client()
-    
-    try:
-        # Optionally clear existing classifications
-        if clear_existing:
-            print("Clearing existing classifications...")
+    # Optionally clear existing classifications
+    if clear_existing:
+        print("Clearing existing classifications...")
+        rds_client = get_rds_client()
+        try:
             with rds_client.session_maker() as session:
                 deleted = session.query(ClipClassificationORM).delete()
                 session.commit()
                 print(f"Deleted {deleted} existing classifications")
-        
-        # Get all observers
-        print("Listing all observers from S3...")
-        observers = list_all_observers()
-        print(f"Found {len(observers)} observers")
-        
-        # Process each observer
-        for observer_id in tqdm(observers, desc="Processing observers"):
-            stats['observers_processed'] += 1
-            
-            # List clip classification files for this observer
-            observation_ids = list_clip_classification_files_for_observer(observer_id)
-            
-            for observation_id in observation_ids:
-                stats['observations_found'] += 1
-                
-                try:
-                    # Read classification data from S3
-                    data = read_clip_classification_from_s3(observer_id, observation_id)
-                    if not data:
-                        continue
-                    
-                    # Parse the composite classifications
-                    classifications = parse_composite_classifications(data)
-                    if not classifications:
-                        continue
-                    
-                    # Delete existing classifications for this observation (for idempotency)
-                    delete_existing_classifications(observation_id, rds_client)
-                    
-                    # Store the new classifications
-                    current_time = int(time.time() * 1000)
-                    count = store_classifications(observation_id, classifications, rds_client, current_time)
-                    stats['classifications_stored'] += count
-                    
-                except Exception as e:
-                    print(f"Error processing {observer_id}/{observation_id}: {e}")
-                    stats['errors'] += 1
-        
-        print("\n=== Processing Complete ===")
-        print(f"Observers processed: {stats['observers_processed']}")
-        print(f"Observations found: {stats['observations_found']}")
-        print(f"Classifications stored: {stats['classifications_stored']}")
-        print(f"Errors: {stats['errors']}")
-        
+        finally:
+            rds_client.disconnect()
+    
+    # Get all observers
+    print("Listing all observers from S3...")
+    observers = list_all_observers()
+    print(f"Found {len(observers)} observers")
+    
+    # Collect all work items (observer_id, observation_id) pairs
+    print("Collecting observation files from S3...")
+    work_items: List[Tuple[str, str]] = []
+    
+    for observer_id in tqdm(observers, desc="Scanning observers"):
+        stats['observers_processed'] += 1
+        observation_ids = list_clip_classification_files_for_observer(observer_id)
+        for observation_id in observation_ids:
+            work_items.append((observer_id, observation_id))
+    
+    stats['observations_found'] = len(work_items)
+    print(f"Found {len(work_items)} clip classification files to process")
+    
+    if not work_items:
+        print("No observations to process")
         return stats
+    
+    # Process observations in parallel using multiprocessing
+    print(f"Processing observations using {num_workers} worker processes...")
+    
+    with Pool(processes=num_workers) as pool:
+        # Use imap_unordered for better performance with progress bar
+        results = list(tqdm(
+            pool.imap_unordered(_process_observation_worker, work_items, chunksize=10),
+            total=len(work_items),
+            desc="Processing observations"
+        ))
+    
+    # Aggregate results
+    for success, count in results:
+        if success:
+            stats['classifications_stored'] += count
+        else:
+            stats['errors'] += 1
+    
+    print("\n=== Processing Complete ===")
+    print(f"Observers processed: {stats['observers_processed']}")
+    print(f"Observations found: {stats['observations_found']}")
+    print(f"Classifications stored: {stats['classifications_stored']}")
+    print(f"Errors: {stats['errors']}")
+    
+    return stats
+
+
+def process_observer_parallel(observer_id: str, num_workers: int = DEFAULT_WORKERS) -> dict:
+    """Process all observations for a specific observer using multiprocessing.
+    
+    Args:
+        observer_id: The observer UUID
+        num_workers: Number of worker processes to use
         
-    finally:
-        rds_client.disconnect()
+    Returns:
+        Dictionary with processing statistics
+    """
+    stats = {
+        'observations_found': 0,
+        'classifications_stored': 0,
+        'errors': 0
+    }
+    
+    observation_ids = list_clip_classification_files_for_observer(observer_id)
+    print(f"Found {len(observation_ids)} clip classification files for observer {observer_id}")
+    
+    if not observation_ids:
+        print("No observations to process")
+        return stats
+    
+    stats['observations_found'] = len(observation_ids)
+    
+    # Create work items
+    work_items = [(observer_id, obs_id) for obs_id in observation_ids]
+    
+    # Process in parallel
+    print(f"Processing observations using {num_workers} worker processes...")
+    
+    with Pool(processes=num_workers) as pool:
+        results = list(tqdm(
+            pool.imap_unordered(_process_observation_worker, work_items, chunksize=10),
+            total=len(work_items),
+            desc="Processing observations"
+        ))
+    
+    # Aggregate results
+    for success, count in results:
+        if success:
+            stats['classifications_stored'] += count
+        else:
+            stats['errors'] += 1
+    
+    print(f"\nProcessed {stats['observations_found']} observations")
+    print(f"Classifications stored: {stats['classifications_stored']}")
+    print(f"Errors: {stats['errors']}")
+    
+    return stats
 
 
 if __name__ == "__main__":
     """
     Usage:
-    python -m utils.etl.clip_classification [--clear] [--observer-id OBSERVER_ID] [--observation-id OBSERVATION_ID]
+    python -m utils.etl.clip_classification [--clear] [--workers N] [--observer-id OBSERVER_ID] [--observation-id OBSERVATION_ID]
     
     Options:
     --clear                             Clear existing classifications before processing all observations
+    --workers N                         Number of worker processes to use (default: min(8, cpu_count))
     --observer-id OBSERVER_ID           Process only a specific observer. When provided, processes all observations for that observer.
     --observation-id OBSERVATION_ID     Process only a specific observation (requires --observer-id)
     """
@@ -323,6 +428,12 @@ if __name__ == "__main__":
         "--clear", 
         action="store_true", 
         help="Clear existing classifications before processing"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_WORKERS,
+        help=f"Number of worker processes (default: {DEFAULT_WORKERS})"
     )
     parser.add_argument(
         "--observer-id",
@@ -341,31 +452,12 @@ if __name__ == "__main__":
         if not args.observer_id:
             print("Error: --observation-id requires --observer-id")
             exit(1)
-        # Process single observation
+        # Process single observation (no multiprocessing needed)
         success = process_single_ad(args.observer_id, "", args.observation_id)
         exit(0 if success else 1)
     elif args.observer_id:
-        # Process all observations for a specific observer
-        rds_client = get_rds_client()
-        try:
-            observation_ids = list_clip_classification_files_for_observer(args.observer_id)
-            print(f"Found {len(observation_ids)} clip classification files for observer {args.observer_id}")
-            
-            for observation_id in tqdm(observation_ids, desc="Processing observations"):
-                try:
-                    data = read_clip_classification_from_s3(args.observer_id, observation_id)
-                    if not data:
-                        continue
-                    classifications = parse_composite_classifications(data)
-                    if not classifications:
-                        continue
-                    delete_existing_classifications(observation_id, rds_client)
-                    current_time = int(time.time() * 1000)
-                    store_classifications(observation_id, classifications, rds_client, current_time)
-                except Exception as e:
-                    print(f"Error processing {observation_id}: {e}")
-        finally:
-            rds_client.disconnect()
+        # Process all observations for a specific observer using multiprocessing
+        process_observer_parallel(args.observer_id, num_workers=args.workers)
     else:
-        # Process all observations
-        process_all_ads(clear_existing=args.clear)
+        # Process all observations using multiprocessing
+        process_all_ads(clear_existing=args.clear, num_workers=args.workers)
