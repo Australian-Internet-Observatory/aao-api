@@ -214,17 +214,6 @@ Tasks:
   - [x] Insert the parsed data into the `ad_classifications` table in the RDS database.
   - [x] Create a trigger to run the Lambda function when new files are added to the S3 bucket.
 
-Required environmental variables and configurations:
-- `S3_BUCKET_NAME`: The name of the S3 bucket containing the classification files.
-- `RDS_DATABASE_URL`: The connection string for the RDS database.
-- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`: Credentials for accessing AWS services.
-- `LAMBDA_FUNCTION_NAME`: The name of the AWS Lambda function to be created.
-- `LAMBDA_TRIGGER_S3_PATH`: The S3 path to monitor for new classification files.
-- `LAMBDA_TIMEOUT`: The maximum execution time for the Lambda function.
-- `LAMBDA_MEMORY_SIZE`: The amount of memory allocated to the Lambda function.
-- `LOGGING_LEVEL`: The logging level for the Lambda function (e.g., DEBUG, INFO, ERROR).
-- `RETRY_ATTEMPTS`: The number of retry attempts for failed S3 reads or database inserts.
-
 ### Batch Processing API
 
 Estimate: 3 hours
