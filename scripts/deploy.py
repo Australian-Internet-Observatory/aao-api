@@ -10,7 +10,8 @@ import os
 import sys
 from datetime import datetime
 
-from config import config
+import zipfile
+from config import from_string
 
 class ConsoleColors:
     HEADER = '\033[95m'
@@ -22,6 +23,11 @@ class ConsoleColors:
     DEFAULT = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+# Load the config from the zip file
+archive = zipfile.ZipFile('lambda-deployment-package.zip', 'r')
+config_file_content = archive.read('config.ini').decode('utf-8')
+config = from_string(config_file_content)
 
 session = boto3.Session(
     aws_access_key_id=config.aws.access_key_id,
@@ -40,12 +46,14 @@ def is_possibly_dev_environment():
     
     This can be used to guard against accidental deployments to production.
     """
+    
     KEYWORDS = ['dev', 'development', 'test', 'staging']
     possible_configs = [
         config.deployment.lambda_function_name,
         config.deployment.zip_file,
         config.postgres.database,
     ]
+    
     for value in possible_configs:
         if any(keyword in value.lower() for keyword in KEYWORDS):
             print(f'{ConsoleColors.WARNING}[WARNING] Possible development environment detected: {value}{ConsoleColors.DEFAULT}')
@@ -120,5 +128,6 @@ def deploy_lambda():
             
     except Exception as e:
         print(f'Deployment failed: {str(e)}')
-    
-deploy_lambda()
+
+if __name__ == '__main__':
+    deploy_lambda()
