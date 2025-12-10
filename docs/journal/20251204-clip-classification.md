@@ -242,6 +242,6 @@ Extend the existing AAO dashboard backend API to include endpoints for retrievin
 
 Tasks:
 
-- [ ] Update the `POST /ads/batch/presign` endpoint to handle requests for ad classification data.
-- [ ] Implement the logic to query the `ad_classifications` table for the requested ad IDs and retrieve the associated classification labels and scores.
-- [ ] Format the retrieved classification data and include it in the API response payload.
+- [x] Update the `POST /ads/batch/presign` endpoint to handle requests for ad classification data.
+- [x] Implement the logic to query the `ad_classifications` table for the requested ad IDs and retrieve the associated classification labels and scores.
+- [x] Format the retrieved classification data and include it in the API response payload.

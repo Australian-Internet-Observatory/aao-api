@@ -14,6 +14,7 @@ from middlewares.authenticate import authenticate
 from middlewares.authorise import Role, authorise
 from models.ad_tag import AdTag, AdTagORM
 from models.attribute import AdAttributeORM
+from models.clip_classification import ClipClassificationORM
 from models.observation import Observation, ObservationORM
 from routes import route
 from routes.ad_attributes import ad_attributes_repository
@@ -159,6 +160,8 @@ class Enricher:
             data['metadata']['tags'] = self.tags
         if hasattr(self, 'rdo'):
             data['metadata']['rdo'] = self.rdo
+        if hasattr(self, 'classifications'):
+            data['metadata']['classifications'] = self.classifications
         end_at = datetime.datetime.now(tz=dateutil.tz.tzutc())
         self.execution_time_ms += (end_at - start_at).total_seconds() * 1000
         return data
@@ -295,6 +298,41 @@ class BatchEnricher:
         
         for enricher in tqdm(self.enrichers):
             enricher.tags = results.get(enricher.ad_id, [])
+        return self
+    
+    def attach_classifications(self):
+        """Batch attach clip classifications to all enrichers using RDS client directly."""
+        rds_client = RdsStorageClient(base_orm=ClipClassificationORM)
+        rds_client.connect()
+        
+        observations = [enricher.ad_id for enricher in self.enrichers]
+        results = {}
+        with rds_client.session_maker() as session:
+            query = session.query(ClipClassificationORM).filter(
+                ClipClassificationORM.observation_id.in_(observations)
+            ).all()
+            print(f"[BatchEnricher] Found {len(query)} classification entries for {len(observations)} observations.")
+            for result in query:
+                observation_id = result.observation_id
+                if observation_id not in results:
+                    results[observation_id] = []
+                results[observation_id].append({
+                    'label': result.label,
+                    'score': result.score
+                })
+        
+        # Sort classifications by score (descending) for each observation
+        for observation_id in results:
+            results[observation_id] = sorted(
+                results[observation_id], 
+                key=lambda x: x['score'], 
+                reverse=True
+            )
+        
+        for enricher in tqdm(self.enrichers):
+            enricher.classifications = results.get(enricher.ad_id, [])
+        
+        rds_client.disconnect()
         return self
     
     def attach_rdo(self):
@@ -518,7 +556,7 @@ def get_batch_ads(event, response: Response):
                             type: array
                             items:
                                 type: string
-                                enum: ['attributes', 'tags', 'rdo']
+                                enum: ['attributes', 'tags', 'rdo', 'classification']
     responses:
         200:
             description: A successful response
@@ -574,6 +612,9 @@ def get_batch_ads(event, response: Response):
     
     if 'rdo' in metadata_types:
         batch_enricher.attach_rdo()
+    
+    if 'classification' in metadata_types:
+        batch_enricher.attach_classifications()
         
     enriched_ads = batch_enricher.to_dict()
     return {
@@ -613,7 +654,7 @@ def get_batch_ads_presign(event, response: Response):
                             type: array
                             items:
                                 type: string
-                                enum: ['attributes', 'tags', 'rdo']
+                                enum: ['attributes', 'tags', 'rdo', 'classification']
     responses:
         200:
             description: A successful response
@@ -656,7 +697,7 @@ def get_batch_ads_presign(event, response: Response):
             'comment': 'Invalid request, metadata_types must be a list of strings'
         })
         
-    ACCEPTED_METADATA_TYPES = ['attributes', 'tags', 'rdo']
+    ACCEPTED_METADATA_TYPES = ['attributes', 'tags', 'rdo', 'classification']
     for metadata_type in metadata_types:
         if metadata_type not in ACCEPTED_METADATA_TYPES:
             return response.status(400).json({
@@ -717,6 +758,9 @@ def get_batch_ads_presign(event, response: Response):
     
     if 'rdo' in metadata_types:
         batch_enricher.attach_rdo()
+    
+    if 'classification' in metadata_types:
+        batch_enricher.attach_classifications()
     
     enriched_ads = batch_enricher.to_dict()
     
