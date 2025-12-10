@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import configparser
 import os
 
 @dataclass
@@ -69,60 +70,68 @@ class Config:
     external_api: ExternalApiConfig
     buckets: BucketsConfig
     test: TestConfig
-    
+
+def _create_config(config) -> Config:
+    return Config(
+        aws=AwsConfig(
+            access_key_id=config['AWS']['ACCESS_KEY_ID'],
+            secret_access_key=config['AWS']['SECRET_ACCESS_KEY'],
+            region=config['AWS']['REGION']
+        ),
+        deployment=DeploymentConfig(
+            lambda_function_name=config['DEPLOYMENT']['LAMBDA_FUNCTION_NAME'],
+            zip_file=config['DEPLOYMENT']['ZIP_FILE'],
+            deployment_bucket=config['DEPLOYMENT']['DEPLOYMENT_BUCKET']
+        ),
+        jwt=JwtConfig(
+            secret=config['JWT']['SECRET'],
+            expiration=int(config['JWT']['EXPIRATION'])
+        ),
+        open_search=OpenSearchConfig(
+            endpoint=config['OPEN_SEARCH']['ENDPOINT']
+        ),
+        postgres=PostgresConfig(
+            host=config['POSTGRES']['HOST'],
+            port=int(config['POSTGRES']['PORT']),
+            database=config['POSTGRES']['DATABASE'],
+            username=config['POSTGRES']['USERNAME'],
+            password=config['POSTGRES']['PASSWORD']
+        ),
+        cilogon=CilogonConfig(
+            client_id=config['CILOGON']['CLIENT_ID'],
+            client_secret=config['CILOGON']['CLIENT_SECRET'],
+            metadata_url=config['CILOGON']['METADATA_URL'],
+            redirect_uri=config['CILOGON']['REDIRECT_URI']
+        ),
+        app=AppConfig(
+            state_cookie_secret=config['APP']['STATE_COOKIE_SECRET'],
+            salt=config['APP']['SALT'],
+            frontend_url=config['APP']['FRONTEND_URL']
+        ),
+        external_api=ExternalApiConfig(
+            ad_delete_lambda_key=config['EXTERNAL_API']['AD_DELETE_LAMBDA_KEY']
+        ),
+        buckets=BucketsConfig(
+            observations=config['BUCKETS']['OBSERVATIONS'],
+            metadata=config['BUCKETS']['METADATA']
+        ),
+        test=TestConfig(
+            username=config['TEST']['USERNAME'],
+            password=config['TEST']['PASSWORD']
+        )
+    )
+
 def _load_from_file(target = 'config.ini') -> Config:
-    import configparser
     _config = configparser.ConfigParser()
     _config.read(target)
     
-    return Config(
-        aws=AwsConfig(
-            access_key_id=_config['AWS']['ACCESS_KEY_ID'],
-            secret_access_key=_config['AWS']['SECRET_ACCESS_KEY'],
-            region=_config['AWS']['REGION']
-        ),
-        deployment=DeploymentConfig(
-            lambda_function_name=_config['DEPLOYMENT']['LAMBDA_FUNCTION_NAME'],
-            zip_file=_config['DEPLOYMENT']['ZIP_FILE'],
-            deployment_bucket=_config['DEPLOYMENT']['DEPLOYMENT_BUCKET']
-        ),
-        jwt=JwtConfig(
-            secret=_config['JWT']['SECRET'],
-            expiration=int(_config['JWT']['EXPIRATION'])
-        ),
-        open_search=OpenSearchConfig(
-            endpoint=_config['OPEN_SEARCH']['ENDPOINT']
-        ),
-        postgres=PostgresConfig(
-            host=_config['POSTGRES']['HOST'],
-            port=int(_config['POSTGRES']['PORT']),
-            database=_config['POSTGRES']['DATABASE'],
-            username=_config['POSTGRES']['USERNAME'],
-            password=_config['POSTGRES']['PASSWORD']
-        ),
-        cilogon=CilogonConfig(
-            client_id=_config['CILOGON']['CLIENT_ID'],
-            client_secret=_config['CILOGON']['CLIENT_SECRET'],
-            metadata_url=_config['CILOGON']['METADATA_URL'],
-            redirect_uri=_config['CILOGON']['REDIRECT_URI']
-        ),
-        app=AppConfig(
-            state_cookie_secret=_config['APP']['STATE_COOKIE_SECRET'],
-            salt=_config['APP']['SALT'],
-            frontend_url=_config['APP']['FRONTEND_URL']
-        ),
-        external_api=ExternalApiConfig(
-            ad_delete_lambda_key=_config['EXTERNAL_API']['AD_DELETE_LAMBDA_KEY']
-        ),
-        buckets=BucketsConfig(
-            observations=_config['BUCKETS']['OBSERVATIONS'],
-            metadata=_config['BUCKETS']['METADATA']
-        ),
-        test=TestConfig(
-            username=_config['TEST']['USERNAME'],
-            password=_config['TEST']['PASSWORD']
-        )
-    )
+    return _create_config(_config)
+
+def from_string(str: str) -> Config:
+    _config = configparser.ConfigParser()
+    _config.read_string(str)
+    
+    return _create_config(_config)
 
 import os
 

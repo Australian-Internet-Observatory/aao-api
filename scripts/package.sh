@@ -2,6 +2,16 @@
 
 echo "Creating AWS Lambda deployment package with dependencies"
 
+# Get stage from command line argument, default to prod
+Stage="${1:-prod}"
+echo "Stage: $Stage"
+
+# Validate stage
+if [[ "$Stage" != "prod" && "$Stage" != "dev" ]]; then
+    echo "Error: Invalid stage '$Stage'. Must be 'prod' or 'dev'."
+    exit 1
+fi
+
 # Create a temporary directory
 TempDir="temp"
 ZipFileName="lambda-deployment-package.zip"
@@ -9,6 +19,10 @@ mkdir -p $TempDir
 
 # Copy all files to the temporary directory, excluding the following folders
 rsync -av --progress . $TempDir --exclude ".git" --exclude ".github" --exclude ".vscode" --exclude "temp" --exclude "__pycache__" --exclude ".venv" --exclude "docs" --exclude "README.md" --exclude "swagger.yaml" --exclude "tests.py" --exclude "scripts" --exclude "$ZipFileName" --exclude "requirements.txt" --exclude "images" --exclude "apitests" --exclude "unittests"
+
+# Copy the appropriate config file based on stage
+echo "Copying config.$Stage.ini to $TempDir/config.ini"
+cp "config.$Stage.ini" "$TempDir/config.ini"
 
 # Install the dependencies for the 86_64 architecture
 echo "Installing dependencies for x86_64 architecture"
@@ -29,7 +43,7 @@ fi
 echo "Zipping the contents of the $TempDir directory"
 # zip -r ./$ZipFileName ./$TempDir/*
 cd $TempDir
-zip -r ../$ZipFileName *
+zip -rqdgds 10m ../$ZipFileName *
 cd ..
 
 # Delete the temporary directory
