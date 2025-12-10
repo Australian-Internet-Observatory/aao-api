@@ -159,6 +159,7 @@ def parse_query_parameters(path: str) -> tuple[str, dict]:
 from . import auth
 from . import users
 from . import ads
+from . import ads_enrichment
 from . import observers
 from . import ad_attributes
 from . import media
