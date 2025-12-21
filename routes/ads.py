@@ -556,7 +556,7 @@ def get_batch_ads(event, response: Response):
                             type: array
                             items:
                                 type: string
-                                enum: ['attributes', 'tags', 'rdo', 'classification']
+                                enum: ['attributes', 'tags', 'rdo', 'classifications']
     responses:
         200:
             description: A successful response
@@ -613,7 +613,7 @@ def get_batch_ads(event, response: Response):
     if 'rdo' in metadata_types:
         batch_enricher.attach_rdo()
     
-    if 'classification' in metadata_types:
+    if 'classifications' in metadata_types:
         batch_enricher.attach_classifications()
         
     enriched_ads = batch_enricher.to_dict()
@@ -654,7 +654,7 @@ def get_batch_ads_presign(event, response: Response):
                             type: array
                             items:
                                 type: string
-                                enum: ['attributes', 'tags', 'rdo', 'classification']
+                                enum: ['attributes', 'tags', 'rdo', 'classifications']
     responses:
         200:
             description: A successful response
@@ -697,7 +697,7 @@ def get_batch_ads_presign(event, response: Response):
             'comment': 'Invalid request, metadata_types must be a list of strings'
         })
         
-    ACCEPTED_METADATA_TYPES = ['attributes', 'tags', 'rdo', 'classification']
+    ACCEPTED_METADATA_TYPES = ['attributes', 'tags', 'rdo', 'classifications']
     for metadata_type in metadata_types:
         if metadata_type not in ACCEPTED_METADATA_TYPES:
             return response.status(400).json({
@@ -759,7 +759,7 @@ def get_batch_ads_presign(event, response: Response):
     if 'rdo' in metadata_types:
         batch_enricher.attach_rdo()
     
-    if 'classification' in metadata_types:
+    if 'classifications' in metadata_types:
         batch_enricher.attach_classifications()
     
     enriched_ads = batch_enricher.to_dict()
