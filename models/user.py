@@ -1,9 +1,12 @@
 from uuid import uuid4
-from typing import List
+from typing import List, TYPE_CHECKING
 from pydantic import BaseModel
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import ForeignKey
 from .base import Base
+
+if TYPE_CHECKING:
+    from .export import ExportORM, SharedExportORM
 
 class UserORM(Base):
     __tablename__ = 'users'
@@ -16,6 +19,10 @@ class UserORM(Base):
     
     # Add relationship to user_identities
     identities: Mapped[List["UserIdentityORM"]] = relationship("UserIdentityORM", back_populates="user")
+    
+    # Relationships for exports
+    exports: Mapped[List["ExportORM"]] = relationship("ExportORM", back_populates="creator")
+    shared_exports: Mapped[List["SharedExportORM"]] = relationship("SharedExportORM", back_populates="user")
 
 class UserIdentityORM(Base):
     __tablename__ = 'user_identities'

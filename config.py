@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import configparser
 import os
+from dotenv import load_dotenv
 
 @dataclass
 class AwsConfig:
@@ -135,6 +136,7 @@ def from_string(str: str) -> Config:
 
 import os
 
+load_dotenv(verbose=True)
 print("Loading configuration for environment:", os.getenv('ENV', 'unknown'))
 
 if os.getenv('ENV') == 'documentation':
