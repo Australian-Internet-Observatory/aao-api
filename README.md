@@ -169,6 +169,22 @@ To run all API tests:
 python -m pytest apitests
 ```
 
+## Database Migrations
+
+Database migrations are managed using [Alembic](https://alembic.sqlalchemy.org/en/latest/).
+
+To create a new migration, use the following command:
+
+```bash
+alembic revision --autogenerate -m "Migration message"
+```
+
+To apply the migrations to the database, use the following command:
+
+```bash
+alembic upgrade head
+```
+
 ## Deployment
 
 To deploy the AWS Lambda function, follow these steps:
@@ -189,15 +205,15 @@ python -m scripts.deploy
 python -m scripts.pulse
 ```
 
-1. **Create the deployment package**:
+**Create the deployment package**:
    
-From the root directory, run the `package.ps1` script to create the deployment package. This script will create a ZIP file containing the code and dependencies.
+From the root directory, run the `package.sh` script to create the deployment package. This script will create a ZIP file containing the code and dependencies.
 
 ```powershell
-./scripts/package.ps1
+./scripts/package.sh
 ```
 
-2. **Deploy the package to AWS Lambda**:
+**Deploy the package to AWS Lambda**:
    
 From the root directory, run the `deploy.py` script to upload the deployment package to AWS Lambda. Ensure that your `config.ini` file contains the correct AWS credentials and settings.
 
@@ -207,7 +223,7 @@ python -m scripts.deploy
 
 This will update the Lambda function with the new code and dependencies.
 
-3. **Test the deployment**:
+**Test the deployment**:
 
 The `pulse.py` script can be used to test the deployment. This script will invoke the `/hello` endpoint of the API and print the response.
 

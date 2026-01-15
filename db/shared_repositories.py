@@ -5,6 +5,12 @@ from models.attribute import AdAttribute, AdAttributeORM
 from models.observation import Observation, ObservationORM
 from models.tag import Tag, TagORM
 from models.user import User, UserORM, UserIdentity, UserIdentityORM
+from models.export import (
+    Export, ExportORM, 
+    SharedExport, SharedExportORM, 
+    ExportableField, ExportableFieldORM,
+    ExportField, ExportFieldORM
+)
 
 users_repository = Repository(
     model=User,
@@ -55,3 +61,35 @@ applied_tags_repository = Repository(
     )
 )
 
+# Export-related repositories
+exports_repository = Repository(
+    model=Export,
+    client=RdsStorageClient(
+        base_orm=ExportORM
+    )
+)
+
+shared_exports_repository = Repository(
+    model=SharedExport,
+    keys=['export_id', 'user_id'],
+    auto_generate_key=False,
+    client=RdsStorageClient(
+        base_orm=SharedExportORM
+    )
+)
+
+exportable_fields_repository = Repository(
+    model=ExportableField,
+    client=RdsStorageClient(
+        base_orm=ExportableFieldORM
+    )
+)
+
+export_fields_repository = Repository(
+    model=ExportField,
+    keys=['export_id', 'field_id'],
+    auto_generate_key=False,
+    client=RdsStorageClient(
+        base_orm=ExportFieldORM
+    )
+)
