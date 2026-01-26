@@ -209,4 +209,18 @@ def test_delete_export_success():
     with exports_repository.create_session() as session:
         export_record = session.get_first({'id': export_id})
         assert export_record is None
-    
+
+def test_list_exports_success():
+    res = execute_endpoint(
+        endpoint='/exports',
+        method='GET',
+        auth=True
+    )
+    assert res['statusCode'] == 200
+    exports = res['body']
+    print(">>> List of Exports:")
+    print(exports)
+    assert isinstance(exports, list)
+    for export in exports:
+        assert 'export_id' in export
+        assert 'status' in export

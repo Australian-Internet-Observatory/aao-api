@@ -16,6 +16,7 @@ class ExportStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    EXPIRED = "expired"
 
 
 class ExportORM(Base):

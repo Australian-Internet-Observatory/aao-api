@@ -3,9 +3,9 @@ import os
 import boto3
 from config import config
 
-ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", None) or config.aws.access_key_id
-SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", None) or config.aws.secret_access_key
-REGION_NAME = os.getenv("AWS_REGION", "ap-southeast-2") or config.aws.region_name
+ACCESS_KEY_ID = config.aws.access_key_id
+SECRET_ACCESS_KEY = config.aws.secret_access_key
+REGION_NAME = config.aws.region
 SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL", None)
 
 logger = logging.getLogger(__name__)

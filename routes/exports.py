@@ -7,7 +7,7 @@ and sharing export jobs.
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from routes import route
 from middlewares.authenticate import authenticate
 from utils import Response, use
@@ -21,12 +21,25 @@ from db.shared_repositories import (
     users_repository
 )
 from models.export import ExportStatus
+from utils.timer import Timer
 
 logger = logging.getLogger(__name__)
 
 # Maximum retries for export jobs (from config or default)
 MAX_RETRIES = 3
 
+class SwiftClientSingleton:
+    """Singleton wrapper for SwiftClient to avoid multiple initializations."""
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(SwiftClientSingleton, cls).__new__(cls)
+            cls._instance.client = SwiftClient()
+        return cls._instance
+
+    def client(cls):
+        return cls._instance.client
 
 def export_to_dict(export, shared_user_ids: list[str] = None, field_paths: list[str] = None) -> dict:
     """Convert an export entity to a dictionary response.
@@ -35,8 +48,21 @@ def export_to_dict(export, shared_user_ids: list[str] = None, field_paths: list[
     temporary public URL using `SwiftClient.get_temp_url`. If parsing or
     generating the temp URL fails, fall back to the stored `object_location`.
     """
-    # Default to the raw stored object location
-    url = export.object_location
+    EXPIRATION_DAYS = 7  # Temp URL expiration in days
+    # Detect if export is expired
+    status = export.status
+    expired = False
+    if export.completed_at:
+        # Make completed_at timezone-aware for comparison
+        if export.completed_at.tzinfo is None:
+            export.completed_at = export.completed_at.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - export.completed_at
+        if delta.days > EXPIRATION_DAYS and status == ExportStatus.COMPLETED.value:
+            status = ExportStatus.EXPIRED.value
+            expired = True
+    
+    # Default to the raw stored object location if not expired
+    url = export.object_location if not expired else None
 
     if url:
         print("Generating temp URL for export:", export.id)
@@ -44,7 +70,7 @@ def export_to_dict(export, shared_user_ids: list[str] = None, field_paths: list[
         object_name = url
 
         try:
-            sc = SwiftClient()
+            sc = SwiftClientSingleton().client
             url = sc.get_temp_url(container, object_name)
             print("Generated temp URL:", url)
         except Exception as e:
@@ -60,7 +86,7 @@ def export_to_dict(export, shared_user_ids: list[str] = None, field_paths: list[
             "fields": field_paths or []
         },
         "shared_with": shared_user_ids or [],
-        "status": export.status,
+        "status": status,
         "url": url,
         "created_at": export.created_at.isoformat() if export.created_at else None,
         "updated_at": export.updated_at.isoformat() if export.updated_at else None,
@@ -69,6 +95,23 @@ def export_to_dict(export, shared_user_ids: list[str] = None, field_paths: list[
         "message": export.message
     }
     return result
+
+
+def set_export_fields(export_id: str, field_ids: list[str]) -> None:
+    """Set the exportable fields for an export."""
+    with export_fields_repository.create_session() as session:
+        # Clear existing fields
+        existing_fields = session.get({'export_id': export_id})
+        if existing_fields:
+            for ef in existing_fields:
+                session.delete({'export_id': export_id, 'field_id': ef.field_id})
+        
+        # Add new fields
+        for field_id in field_ids:
+            session.create({
+                'export_id': export_id,
+                'field_id': field_id
+            })
 
 
 def get_export_field_paths(export_id: str) -> list[str]:
@@ -112,6 +155,7 @@ def send_export_to_queue(export_id: str, creator_id: str, export_parameters: dic
     except Exception as e:
         logger.error(f"Failed to send export job {export_id} to queue: {e}")
         return False
+
 @route('/exports/fields', 'GET')
 @use(authenticate)
 def list_exportable_fields(event, response: Response, context):
@@ -174,20 +218,17 @@ def create_export(event, response: Response, context):
           schema:
             type: object
             properties:
-              export_parameters:
+                query:
                 type: object
-                properties:
-                  query:
-                    type: object
-                    description: Query to filter the data to export
-                  include_images:
-                    type: boolean
-                    default: false
-                  fields:
-                    type: array
-                    items:
-                      type: string
-                    description: List of field paths to include in the export
+                description: Query to filter the data to export
+                include_images:
+                type: boolean
+                default: false
+                fields:
+                type: array
+                items:
+                    type: string
+                description: List of field paths to include in the export
     responses:
       201:
         description: Export job created successfully
@@ -220,6 +261,28 @@ def create_export(event, response: Response, context):
     include_images = export_params.get('include_images', False)
     field_paths = export_params.get('fields', [])
     
+    # Identify valid field IDs from paths
+    valid_field_ids = []
+    with exportable_fields_repository.create_session() as field_session:
+        for path in field_paths:
+            field = field_session.get_first({'path': path})
+            if field:
+                valid_field_ids.append(field.id)
+                
+    # If no valid fields specified, use defaults
+    if not valid_field_ids:
+        with exportable_fields_repository.create_session() as field_session:
+            default_fields = field_session.get({'is_default': True})
+            valid_field_ids = [f.id for f in default_fields]
+            field_paths = [f.path for f in default_fields]
+
+    # If still no fields, raise error
+    if not valid_field_ids:
+        return response.status(400).json({
+            "success": False,
+            "comment": "No valid exportable fields specified"
+        })
+    
     # Create the export record
     export_data = {
         'creator_id': creator_id,
@@ -233,6 +296,8 @@ def create_export(event, response: Response, context):
     with exports_repository.create_session() as session:
         export_record = session.create(export_data)
         export_id = export_record['id']
+    
+    set_export_fields(export_id, valid_field_ids)
     
     # Build the export parameters for the queue message
     queue_params = {
