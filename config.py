@@ -19,6 +19,10 @@ class DeploymentConfig:
 class JwtConfig:
     secret: str
     expiration: int
+
+@dataclass
+class ApiKeyConfig:
+    salt: str
     
 @dataclass
 class OpenSearchConfig:
@@ -64,6 +68,7 @@ class Config:
     aws: AwsConfig
     deployment: DeploymentConfig
     jwt: JwtConfig
+    api_key: ApiKeyConfig
     open_search: OpenSearchConfig
     postgres: PostgresConfig
     cilogon: CilogonConfig
@@ -87,6 +92,9 @@ def _create_config(config) -> Config:
         jwt=JwtConfig(
             secret=config['JWT']['SECRET'],
             expiration=int(config['JWT']['EXPIRATION'])
+        ),
+        api_key=ApiKeyConfig(
+            salt=config['API_KEY']['SALT']
         ),
         open_search=OpenSearchConfig(
             endpoint=config['OPEN_SEARCH']['ENDPOINT']

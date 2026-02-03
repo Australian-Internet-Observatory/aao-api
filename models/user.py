@@ -7,6 +7,7 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .export import ExportORM, SharedExportORM
+    from .api_key import ApiKeyORM
 
 class UserORM(Base):
     __tablename__ = 'users'
@@ -23,6 +24,9 @@ class UserORM(Base):
     # Relationships for exports
     exports: Mapped[List["ExportORM"]] = relationship("ExportORM", back_populates="creator")
     shared_exports: Mapped[List["SharedExportORM"]] = relationship("SharedExportORM", back_populates="user")
+    
+    # Relationship to API keys
+    api_keys: Mapped[List["ApiKeyORM"]] = relationship("ApiKeyORM", back_populates="user")
 
 class UserIdentityORM(Base):
     __tablename__ = 'user_identities'
