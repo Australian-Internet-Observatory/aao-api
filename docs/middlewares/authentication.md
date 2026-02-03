@@ -1,10 +1,87 @@
 # Authentication Middleware
 
-This document describes the authentication system used in the Australian Ad Observatory API, including the JWT-based authentication mechanism and how it integrates with the middleware framework.
+This document describes the authentication system used in the Australian Ad Observatory API, including both JWT-based authentication for user sessions and API key authentication for programmatic access.
 
 ## Overview
 
-The API uses JSON Web Tokens (JWT) for authentication. When a user logs in successfully, they receive a JWT that must be included in subsequent requests to access protected endpoints. The authentication middleware validates this token and attaches user information to the request.
+The API supports two complementary authentication methods:
+
+1. **JWT (JSON Web Tokens)**: For user login flows and web applications. JWTs are time-limited tokens (default 24-hour expiration) that require re-authentication when expired.
+2. **API Keys**: For programmatic access, scripts, and automation. API keys are long-lived credentials that do not expire but can be revoked by deletion.
+
+The authentication middleware validates both authentication methods and populates user information in the request context.
+
+## API Key Authentication
+
+API keys provide a simple alternative to JWTs for programmatic access and automation scenarios.
+
+### Key Characteristics
+
+| Aspect | JWT | API Key |
+| ------ | --- | ------- |
+| **Purpose** | User login, web sessions | Scripts, automation, CI/CD |
+| **Expiration** | Yes (default 24h) | No (revoke-only) |
+| **Format** | 3-part token (header.payload.signature) | 64-character opaque string |
+| **Header** | `Authorization: Bearer <token>` | `X-API-Key: <key>` |
+| **Creation** | Automatic on login | Manual via `/api-keys` endpoint |
+| **Management** | Automatic expiration | Manual deletion to revoke |
+
+### Creating and Using API Keys
+
+**Step 1: Create an API Key** (requires JWT authentication)
+
+```bash
+curl -X POST https://api.example.com/api-keys \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "My Script", "description": "Automated data export"}'
+```
+
+Response (key shown only once):
+```json
+{
+  "api_key": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "title": "My Script",
+    "key": "k8f3j2h5g9m1n4p7q0r6s8t2u5v9w3x1y7z8a9b0c1d2e3f4g5h6i7j8k9l0mnopqr",
+    "suffix": "mnopqr",
+    "created_at": "2026-02-02T10:30:00Z"
+  }
+}
+```
+
+**Step 2: Use the API Key**
+
+```bash
+curl https://api.example.com/data \
+  -H "X-API-Key: k8f3j2h5g9m1n4p7q0r6s8t2u5v9w3x1y7z8a9b0c1d2e3f4g5h6i7j8k9l0mnopqr"
+```
+
+### Security Best Practices
+
+- **Store Securely**: Keep API keys in environment variables, secrets managers, or secure configuration files
+- **Never Commit**: Do not commit keys to version control
+- **Rotate Regularly**: Revoke and recreate keys periodically for long-lived integrations
+- **Revoke Immediately**: Delete keys if they are compromised
+- **Use Appropriate Permissions**: Currently, keys inherit the full permissions of their owner user
+
+### Visibility in List Responses
+
+When listing API keys via `GET /api-keys`, only the last 6 characters (suffix) are shown, never the full key:
+
+```json
+{
+  "api_keys": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "My Script",
+      "suffix": "mnopqr",
+      "created_at": "2026-02-02T10:30:00Z",
+      "last_used_at": "2026-02-02T14:45:00Z"
+    }
+  ]
+}
+```
 
 ## JWT Token Structure
 
@@ -210,6 +287,45 @@ def get_data(event, response: Response, context):
     pass
 ```
 
+### Using API Key Authentication
+
+API keys can be used to authenticate requests without a JWT:
+
+```bash
+# Create an API key (requires JWT authentication)
+curl -X POST \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Data Export Script"}' \
+  https://api.example.com/api-keys
+
+# Response (note: key shown only once):
+# {
+#   "api_key": {
+#     "id": "550e8400-e29b-41d4-a716-446655440000",
+#     "title": "Data Export Script",
+#     "key": "k8f3j2h5g9m1n4p7q0r6s8t2u5v9w3x1y7z8a9b0c1d2e3f4g5h6i7j8k9l0mnopqr",
+#     "suffix": "mnopqr",
+#     "created_at": "2026-02-02T10:30:00Z"
+#   }
+# }
+
+# Use the API key to access endpoints
+curl -H "X-API-Key: k8f3j2h5g9m1n4p7q0r6s8t2u5v9w3x1y7z8a9b0c1d2e3f4g5h6i7j8k9l0mnopqr" \
+  https://api.example.com/data
+
+# List API keys
+curl -H "X-API-Key: <api_key>" \
+  https://api.example.com/api-keys
+
+# Revoke an API key
+curl -X DELETE \
+  -H "X-API-Key: <api_key>" \
+  https://api.example.com/api-keys/550e8400-e29b-41d4-a716-446655440000
+```
+
+Note: **API keys cannot be used to create or manage themselves**. You must use a JWT token to create new API keys. Once created, the API key can be used for data access and listing/revoking its own key.
+
 ## OpenAPI Documentation
 
 The authenticate middleware automatically injects the following security requirement into the generated OpenAPI documentation:
@@ -217,9 +333,10 @@ The authenticate middleware automatically injects the following security require
 ```yaml
 security:
   - bearerAuth: []
+  - apiKeyAuth: []
 ```
 
-The security scheme is defined in the components section of the API specification:
+The security schemes are defined in the components section of the API specification:
 
 ```yaml
 components:
@@ -228,6 +345,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for programmatic access (non-expiring)
 ```
 
 ## JWT Utility Functions

@@ -222,67 +222,125 @@ Delete (revoke) an API key.
 Create the database schema and models to support API key storage.
 
 **Tasks**:
-- [ ] Create Alembic migration for `api_keys` table
-- [ ] Implement `ApiKeyORM` in `models/api_key.py`
-- [ ] Add relationship to `UserORM` in `models/user.py`
-- [ ] Configure repository in `db/shared_repositories.py`
+- [x] Create Alembic migration for `api_keys` table
+- [x] Implement `ApiKeyORM` in `models/api_key.py`
+- [x] Add relationship to `UserORM` in `models/user.py`
+- [x] Configure repository in `db/shared_repositories.py`
+
+**Implementation Notes (2026-02-02)**:
+- Created migration `alembic/versions/2a8ef4cd416c_add_api_keys_table.py`
+- Implemented ORM model with proper relationships to users table
+- Added `api_keys` relationship to `UserORM` with CASCADE delete
+- Configured `api_keys_repository` in shared repositories
 
 ### Milestone 2: API Key Utilities
 
 Implement utility functions for API key generation, hashing, and verification in `utils/api_key.py`.
 
 **Tasks**:
-- [ ] Implement `generate_api_key()` - returns `(full_key, hashed_key, suffix)`; use `secrets.token_urlsafe(64)` to generate the key
-- [ ] Implement `hash_api_key(api_key)` - hash using SHA-256
-- [ ] Implement `verify_api_key(api_key)` - check if key exists and is valid
-- [ ] Implement `get_user_from_api_key(api_key)` - retrieve associated user
-- [ ] Implement `update_last_used(api_key)` - update timestamp on each use
-- [ ] Ensure `suffix` stores the last 6 characters of the key and is returned in list/detail endpoints (never the full key)
+- [x] Implement `generate_api_key()` - returns `(full_key, hashed_key, suffix)`; use `secrets.token_urlsafe(64)` to generate the key
+- [x] Implement `hash_api_key(api_key)` - hash using bcrypt (changed from SHA-256)
+- [x] Implement `verify_api_key(api_key)` - check if key exists and is valid
+- [x] Implement `get_user_from_api_key(api_key)` - retrieve associated user
+- [x] Implement `update_last_used(api_key)` - update timestamp on each use
+- [x] Ensure `suffix` stores the last 6 characters of the key and is returned in list/detail endpoints (never the full key)
+
+**Implementation Notes (2026-02-02)**:
+- Used bcrypt instead of SHA-256 for consistency with password hashing
+- Added bcrypt==4.1.2 to requirements.txt
+- API keys are generated using `secrets.token_urlsafe(64)` (~86 characters)
+- Keys are hashed with bcrypt after combining with server-side salt
+- Implemented synchronous `last_used_at` updates for accurate audit trails
+- Added helper functions: `is_api_key_exists`, `get_api_key_by_id`, `get_user_api_keys`, `delete_api_key`
 
 ### Milestone 3: Authentication Middleware
 
 Update the authentication middleware (`middlewares/authenticate.py`) to support both JWT and API key authentication.
 
 **Tasks**:
-- [ ] Refactor `authenticate` middleware to check for both auth methods
-- [ ] Implement `authenticate_with_api_key` function
-- [ ] Refactor existing JWT code into `authenticate_with_jwt` function
-- [ ] Add `event['auth_method']` to track authentication method used (`'jwt'` or `'api_key'`)
-- [ ] Set `event['identity'] = None` for API key authentication (no associated identity)
-- [ ] Set `event['user']` based on API key owner
-- [ ] Update middleware docstring for OpenAPI generation
+- [x] Refactor `authenticate` middleware to check for both auth methods
+- [x] Implement `authenticate_with_api_key` function
+- [x] Refactor existing JWT code into `authenticate_with_jwt` function
+- [x] Add `event['auth_method']` to track authentication method used (`'jwt'` or `'api_key'`)
+- [x] Set `event['identity'] = None` for API key authentication (no associated identity)
+- [x] Set `event['user']` based on API key owner
+- [x] Update middleware docstring for OpenAPI generation
+
+**Implementation Notes (2026-02-02)**:
+- JWT authentication is checked first (maintains backward compatibility)
+- API key is read from `X-API-Key` header (case-insensitive)
+- Both `authenticate_with_jwt` and `authenticate_with_api_key` return None if their respective auth method is not present
+- Added `event['auth_method']` field to distinguish between 'jwt' and 'api_key'
+- API key authentication sets `event['identity'] = None` since keys are not tied to identity providers
+- Updated docstring to include both bearerAuth and apiKeyAuth security schemes
 
 ### Milestone 4: API Endpoints
 
 Implement the CRUD endpoints for API key management in `routes/api_keys.py`.
 
 **Tasks**:
-- [ ] Implement `POST /api-keys` - create new API key
-- [ ] Implement `GET /api-keys` - list user's API keys (with admin override via `user_id` query param)
-- [ ] Implement `GET /api-keys/{key_id}` - get specific API key details
-- [ ] Implement `DELETE /api-keys/{key_id}` - revoke an API key
-- [ ] Register routes in `routes/__init__.py`
+- [x] Implement `POST /api-keys` - create new API key
+- [x] Implement `GET /api-keys` - list user's API keys (with admin override via `user_id` query param)
+- [x] Implement `GET /api-keys/{key_id}` - get specific API key details
+- [x] Implement `DELETE /api-keys/{key_id}` - revoke an API key
+- [x] Register routes in `routes/__init__.py`
+
+**Implementation Notes (2026-02-02)**:
+- All endpoints require JWT authentication (API keys cannot manage themselves)
+- Users with USER or ADMIN role can create and manage their own keys
+- Admins can list and delete any user's keys via `user_id` query parameter
+- The full API key is only returned once during creation with a warning message
+- All list/detail responses only include the suffix (last 6 characters)
+- Proper authorization checks ensure users can only access their own keys (unless admin)
+- Created comprehensive OpenAPI documentation for all endpoints
 
 ### Milestone 5: Documentation and Testing
 
 Update documentation and implement tests.
 
 **Tasks**:
-- [ ] Update `scripts/docgen.py` to add `apiKeyAuth` security scheme to OpenAPI spec
-- [ ] Add unit tests for API key utilities in `unittests/test_api_key.py`
-- [ ] Add integration tests for API key endpoints in `apitests/test_api_keys.py`
-- [ ] Add tests for API key authentication flow
-- [ ] Update `docs/middlewares/authentication.md` with API key usage examples
+- [x] Update `scripts/docgen.py` to add `apiKeyAuth` security scheme to OpenAPI spec
+- [x] Add unit tests for API key utilities in `unittests/test_api_key.py`
+- [x] Add integration tests for API key endpoints in `apitests/test_api_keys.py`
+- [x] Add tests for API key authentication flow
+- [x] Update `docs/middlewares/authentication.md` with API key usage examples
+
+**Status**: All milestone 5 tasks completed.
+
+**Implementation Notes (2026-02-03)**:
+- Updated `scripts/docgen.py` to include `apiKeyAuth` security scheme in OpenAPI components under `/header.name: X-API-Key`
+- Added comprehensive "API Key Authentication" section to `docs/middlewares/authentication.md` with:
+  - JWT vs API Key characteristics comparison table
+  - Step-by-step guide for creating and using API keys
+  - Security best practices and recommendations
+  - Key visibility information (suffix only in list responses)
+  - Complete curl command examples for all API key operations
+- Created `apitests/test_api_keys.py` with 14 comprehensive integration tests
+- Tests cover full API key lifecycle: create → list → use → revoke
+- Tests use JWT authentication from `base.py` for key creation
+- Tests verify API key authentication via `X-API-Key` header
+- All tests automatically clean up created resources
+- Test coverage includes:
+  - API key CRUD operations
+  - Authentication using API keys
+  - Security features (key visibility, revocation, etc.)
+  - Error cases (invalid keys, missing data, etc.)
+  - `last_used_at` timestamp tracking
+- Created `apitests/README_API_KEYS.md` with test documentation
 
 ## Security Considerations
 
-1. **Key Storage**: API keys are hashed using SHA-256 with a server-side salt before storage. The salt should be configured in `config.ini` (see Configuration section below). The original key is only shown once upon creation and is never stored in plaintext.
+1. **Key Storage**: API keys are hashed using bcrypt with a server-side salt before storage. The salt is configured in `config.ini` under the `[API_KEY]` section. The original key is only shown once upon creation and is never stored in plaintext.
 
-1. **Audit Logging**: Track API key usage with `last_used_at` for security auditing.
+2. **Hashing Algorithm**: Changed from SHA-256 to bcrypt for consistency with the existing password hashing implementation. Bcrypt provides better security with built-in salting and work factor.
 
-1. **Revocation**: Deleting an API key immediately invalidates it. There's no grace period.
+3. **Audit Logging**: Track API key usage with `last_used_at` for security auditing. Updates are synchronous to ensure accurate tracking.
 
-1. **Scope Limitation**: Currently, API keys have the same permissions as the associated user. Consider adding scoped permissions in the future.
+4. **Revocation**: Deleting an API key immediately invalidates it. There's no grace period.
+
+5. **Scope Limitation**: Currently, API keys have the same permissions as the associated user. Consider adding scoped permissions in the future.
+
+6. **Authentication Priority**: JWT is checked before API key to maintain backward compatibility and prevent unexpected behavior if both are provided.
 
 ## Configuration
 
@@ -293,5 +351,8 @@ Add a salt value to `config.ini` to be used when hashing API keys. Define it sim
 SALT = your-secure-random-salt-value
 ```
 
-Notes:
-- Update `config.py` to load it into the application configuration so that `utils/api_key` can use it when hashing keys.
+**Implementation Details**:
+- Added `ApiKeyConfig` dataclass to `config.py` with `salt` field
+- Updated `_create_config` function to load API_KEY configuration
+- Added `[API_KEY]` section to both `config.ini` and `sample_config.ini`
+- The salt is accessed via `config.api_key.salt` throughout the application

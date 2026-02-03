@@ -5,6 +5,7 @@ from models.attribute import AdAttribute, AdAttributeORM
 from models.observation import Observation, ObservationORM
 from models.tag import Tag, TagORM
 from models.user import User, UserORM, UserIdentity, UserIdentityORM
+from models.api_key import ApiKey, ApiKeyORM
 from models.export import (
     Export, ExportORM, 
     SharedExport, SharedExportORM, 
@@ -91,5 +92,12 @@ export_fields_repository = Repository(
     auto_generate_key=False,
     client=RdsStorageClient(
         base_orm=ExportFieldORM
+    )
+)
+
+api_keys_repository = Repository(
+    model=ApiKey,
+    client=RdsStorageClient(
+        base_orm=ApiKeyORM
     )
 )
