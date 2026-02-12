@@ -72,11 +72,29 @@ def get_login_token():
     response = local_handler(event, None)
     return json.loads(response['body'])['token']
 
+def live_handler(event, context):
+    # Invoke the live lambda function handler (for testing against the deployed API)
+    import boto3
+    session = boto3.Session(
+        aws_access_key_id=config.aws.access_key_id,
+        aws_secret_access_key=config.aws.secret_access_key,
+        region_name=config.aws.region
+    )
+    lambda_client = session.client('lambda')
+    response = lambda_client.invoke(
+        FunctionName=config.deployment.lambda_function_name,
+        InvocationType='RequestResponse',
+        Payload=json.dumps(event)
+    )
+    response_payload = response['Payload'].read()
+    return json.loads(response_payload)
+
 def execute_endpoint(endpoint:str, 
                      method: Literal['GET', 'POST', 'DELETE', 'PUT', 'PATCH']='GET', 
                      body:dict | None = None, 
                      headers:dict | None = None, 
-                     auth = False
+                     auth = False,
+                     use_live = False
                     ):
     """
     Execute a local API endpoint with the given method and body.
@@ -85,6 +103,8 @@ def execute_endpoint(endpoint:str,
     :param method: The HTTP method to use (default is 'GET').
     :param body: The request body (default is None).
     :param headers: Additional headers to include in the request (default is None).
+    :param auth: Whether to include an Authorization header with a login token (default is False).
+    :param use_live: Whether to call the live deployed API instead of the local handler (default is False).
     :return: The response from the API call.
     """
     if auth:
@@ -101,7 +121,7 @@ def execute_endpoint(endpoint:str,
     if body is not None:
         event['body'] = json.dumps(body)
     
-    response = local_handler(event, None)
+    response = local_handler(event, None) if not use_live else live_handler(event, None)
     if 'body' in response and response['body'] is not None:
         response['body'] = json.loads(response['body'])
     return response
