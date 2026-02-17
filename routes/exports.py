@@ -218,16 +218,16 @@ def create_export(event, response: Response, context):
           schema:
             type: object
             properties:
-                query:
+              query:
                 type: object
                 description: Query to filter the data to export
-                include_images:
+              include_images:
                 type: boolean
                 default: false
-                fields:
+              fields:
                 type: array
                 items:
-                    type: string
+                  type: string
                 description: List of field paths to include in the export
     responses:
       201:

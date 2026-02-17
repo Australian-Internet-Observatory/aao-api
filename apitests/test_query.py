@@ -179,3 +179,16 @@ def test_full_query_without_session():
     assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
     assert 'result' in response['body'], "Response body should contain 'result'"
     assert isinstance(response['body']['result'], list), "result should be a list"
+
+def test_date_range_query():
+    query_body = {"method":"AND","args":[{"method":"DATETIME_BEFORE","args":["1770386400000"]},{"method":"DATETIME_AFTER","args":["1769695200000"]}]}
+    # Use session to query with date range
+    session_response = execute_endpoint('ads/query/new-session', method='GET', auth=True, use_live=True)
+    session_id = session_response['body']['session_id']
+    query_body['session_id'] = session_id
+    response = execute_endpoint('ads/query', method='POST', body=query_body, auth=True, use_live=True)
+    print(response)
+    assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
+    assert 'result' in response['body'], "Response body should contain 'result'"
+    assert isinstance(response['body']['result'], list), "result should be a list"
+    assert len(response['body']['result']) > 0, "Result should not be empty"

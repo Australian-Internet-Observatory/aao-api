@@ -264,6 +264,12 @@ This will create a `swagger.yaml` OpenAPI Spec file in the root directory of the
 > You can use the [Swagger Editor](https://editor.swagger.io/) to and test the generated `swagger.yaml` file.
 >
 > A [Swagger UI Action](https://github.com/marketplace/actions/swagger-ui-action) workflow is used to deploy the API documentation to GitHub Pages automatically when a push is made to the `main` branch.
+>
+> If Docker is installed, you can also run the Swagger UI locally using the following command after running the `docgen` script to generate the `swagger.yaml` file. This will start a local Swagger UI instance that serves the API documentation at `http://localhost:3000/`:
+>
+> ```bash
+> docker run -p 3000:8080 -v "$(pwd)/swagger.yaml":/app/swagger.yaml -e SWAGGER_JSON=/app/swagger.yaml docker.swagger.io/swaggerapi/swagger-ui
+> ```
 
 # Framework
 
