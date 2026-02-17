@@ -4,7 +4,6 @@ Provides endpoints for querying advertising entities and advertisement
 snapshots extracted from CCL enrichments.
 """
 
-from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 
 from db.clients.rds_storage_client import RdsStorageClient, get_db_session, db_url
@@ -25,6 +24,56 @@ from utils.presign import replace_s3_uris
 MAX_LIMIT = 1000
 DEFAULT_LIMIT = 100
 
+def _get_observations_for_snapshots(session: Session, snapshot_source_ids: list[str]) -> dict[str, ObservationORM]:
+    """Fetch related observation ids for a list of snapshot IDs."""
+    
+    results = session.query(
+        AdvertisementSnapshotORM.source_id,
+        CommercialContentEnrichmentORM.observation_id,
+    ).join(
+        CommercialContentEnrichmentORM,
+        AdvertisementSnapshotORM.ccl_enrichment_id == CommercialContentEnrichmentORM.id,
+    ).filter(
+        AdvertisementSnapshotORM.source_id.in_(snapshot_source_ids)
+    ).all()
+    
+    # Group by source_id to handle multiple snapshots from the same observation
+    observations_by_source_id = {}
+    for source_id, observation_id in results:
+        if source_id not in observations_by_source_id:
+            observations_by_source_id[source_id] = set()
+        observations_by_source_id[source_id].add(observation_id)
+        
+    # Convert sets to lists for JSON serialization
+    for source_id in observations_by_source_id:
+        observations_by_source_id[source_id] = list(observations_by_source_id[source_id])
+        
+    return observations_by_source_id
+
+def _get_observations_for_entities(session: Session, entity_source_ids: list[str]) -> dict[str, ObservationORM]:
+    """Fetch related observation ids for a list of entity source IDs."""
+    results = session.query(
+        AdvertisingEntityORM.source_id,
+        CommercialContentEnrichmentORM.observation_id,
+    ).join(
+        CommercialContentEnrichmentORM,
+        AdvertisingEntityORM.ccl_enrichment_id == CommercialContentEnrichmentORM.id,
+    ).filter(
+        AdvertisingEntityORM.source_id.in_(entity_source_ids)
+    ).all()
+    
+    # Group by source_id to handle multiple entities from the same observation
+    observations_by_source_id = {}
+    for source_id, observation_id in results:
+        if source_id not in observations_by_source_id:
+            observations_by_source_id[source_id] = set()
+        observations_by_source_id[source_id].add(observation_id)
+        
+    # Convert sets to lists for JSON serialization
+    for source_id in observations_by_source_id:
+        observations_by_source_id[source_id] = list(observations_by_source_id[source_id])
+        
+    return observations_by_source_id
 
 def _parse_pagination_params(event: dict) -> tuple[int, str | None]:
     """Extract and validate ``limit`` and ``cursor`` from query parameters.
@@ -202,9 +251,6 @@ def get_ccl_entities(event, response: Response):
                                         type: string
                                         nullable: true
                                         description: Cursor for the next page (null if no more results)
-                                    total:
-                                        type: integer
-                                        description: Total number of results matching the filters
         500:
             description: Internal server error
             content:
@@ -255,9 +301,6 @@ def get_ccl_entities(event, response: Response):
                 query = query.filter(AdvertisingEntityORM.type == filters["type"])
 
 
-            # Get total count before pagination
-            total = query.with_entities(func.count()).scalar()
-
             # Cursor-based pagination: return rows with id > cursor
             if cursor is not None:
                 query = query.filter(AdvertisingEntityORM.id > cursor)
@@ -267,13 +310,18 @@ def get_ccl_entities(event, response: Response):
 
         entities = [_serialize_entity(e) for e in results]
         next_cursor = entities[-1]["id"] if len(entities) == limit else None
+        
+        # Add related observation ids to the response
+        source_ids = [e["source_id"] for e in entities]
+        observations_by_source_id = _get_observations_for_entities(session, source_ids)
+        for entity in entities:
+            entity["observed_in"] = observations_by_source_id.get(entity["source_id"], [])
 
         return {
             "success": True,
             "entities": entities,
             "pagination": {
                 "next_cursor": next_cursor,
-                "total": total,
             },
         }
     except Exception as e:
@@ -347,9 +395,6 @@ def get_ccl_snapshots(event, response: Response):
                                         type: string
                                         nullable: true
                                         description: Cursor for the next page (null if no more results)
-                                    total:
-                                        type: integer
-                                        description: Total number of results matching the filters
         500:
             description: Internal server error
             content:
@@ -396,9 +441,6 @@ def get_ccl_snapshots(event, response: Response):
                     query = _apply_observation_filters(query, filters)
 
 
-            # Get total count before pagination
-            total = query.with_entities(func.count()).scalar()
-
             # Cursor-based pagination
             if cursor is not None:
                 query = query.filter(AdvertisementSnapshotORM.id > cursor)
@@ -408,13 +450,18 @@ def get_ccl_snapshots(event, response: Response):
 
         snapshots = [_serialize_snapshot(s) for s in results]
         next_cursor = snapshots[-1]["id"] if len(snapshots) == limit else None
+        
+        # Add related observation ids to the response
+        source_ids = [s["source_id"] for s in snapshots]
+        observations_by_source_id = _get_observations_for_snapshots(session, source_ids)
+        for snapshot in snapshots:
+            snapshot["observed_in"] = observations_by_source_id.get(snapshot["source_id"], [])
 
         return {
             "success": True,
             "snapshots": snapshots,
             "pagination": {
                 "next_cursor": next_cursor,
-                "total": total,
             },
         }
     except Exception as e:

@@ -22,7 +22,8 @@ def test_get_ccl_entities_default():
     body = response.get("body", {})
     assert body["success"] is True
     assert isinstance(body["entities"], list)
-    assert "next_cursor" in body
+    assert "pagination" in body
+    assert "next_cursor" in body["pagination"]
 
 
 def test_get_ccl_entities_with_limit():
@@ -71,6 +72,23 @@ def test_get_ccl_entities_unauthenticated():
 # GET /ccl/snapshots
 # ---------------------------------------------------------------------------
 
+
+def test_get_single_ccl_snapshot():
+    """Set limit=1 to get a single snapshot and check its structure."""
+    response = execute_endpoint(endpoint="/ccl/snapshots?limit=1", method="GET", auth=True)
+    assert response["statusCode"] == 200
+    body = response["body"]
+    assert body["success"] is True
+    snapshots = body.get("snapshots", [])
+    if not snapshots:
+        pytest.skip("No snapshots in database to test")
+    snapshot = snapshots[0]
+    assert "id" in snapshot
+    assert "source_id" in snapshot
+    assert "observed_in" in snapshot  # Check that related observation IDs are included
+    print(snapshot)
+
+
 def test_get_ccl_snapshots_default():
     """Basic authenticated call returns 200 with expected shape."""
     response = execute_endpoint(endpoint="/ccl/snapshots", method="GET", auth=True)
@@ -78,7 +96,8 @@ def test_get_ccl_snapshots_default():
     body = response.get("body", {})
     assert body["success"] is True
     assert isinstance(body["snapshots"], list)
-    assert "next_cursor" in body
+    assert "pagination" in body
+    assert "next_cursor" in body["pagination"]
 
 
 def test_get_ccl_snapshots_with_limit():
